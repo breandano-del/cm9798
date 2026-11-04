@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CM 97/98">
+<meta name="theme-color" content="#0b3d12">
+<title>CM 97/98</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root { --green: #0b3d12; --green-2: #1f6b28; --yellow: #f5e04a; --ink: #eef3ea; --muted: #a9b8a6; --panel: rgba(255,255,255,.06); --line: rgba(255,255,255,.14); }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: #000; color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+body { overscroll-behavior: none; }
+button { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+
+/* ===== Home ===== */
+#home { min-height: 100%; background: radial-gradient(120% 80% at 50% 0%, #17501d 0%, #082a0c 55%, #031205 100%); padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+.wrap { max-width: 560px; margin: 0 auto; }
+.banner { background: linear-gradient(180deg, #0f5a19, #083d10); border: 1px solid #2c8a37; padding: 14px 12px; text-align: center; margin-bottom: 18px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.banner h1 { margin: 0; font-size: 26px; letter-spacing: .02em; color: var(--yellow); text-shadow: 0 2px 0 #000; font-weight: 800; }
+.banner p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 14px; margin-bottom: 14px; }
+.card h2 { margin: 0 0 6px; font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--yellow); }
+.status { display: flex; align-items: center; gap: 10px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #c0392b; flex: none; }
+.dot.ok { background: #4cd25b; }
+.fine { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.btn { appearance: none; border: 1px solid var(--line); background: rgba(255,255,255,.08); padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 15px; }
+.btn:active { filter: brightness(1.3); }
+.btn[disabled] { opacity: .4; }
+.kick { display: block; width: 100%; appearance: none; border: 1px solid #8fe08f; background: linear-gradient(180deg, #34a33d, #1d6a24); color: #fff; padding: 16px; font-size: 24px; font-weight: 800; letter-spacing: .03em; text-shadow: 0 2px 0 rgba(0,0,0,.4); cursor: pointer; margin-bottom: 10px; }
+.kick[disabled] { filter: grayscale(1); opacity: .45; }
+ol.steps { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+ol.steps li { margin: 3px 0; }
+.legal { color: #7f8f7c; font-size: 12px; margin-top: 18px; }
+.prog { height: 4px; background: rgba(255,255,255,.1); margin-top: 10px; display: none; }
+.prog > i { display: block; height: 100%; width: 0; background: var(--yellow); transition: width .2s; }
+
+/* ===== Stage ===== */
+#stage { position: fixed; inset: 0; background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+#zone { position: absolute; top: 0; bottom: 0; left: env(safe-area-inset-left, 0px); right: max(58px, env(safe-area-inset-right, 0px)); overflow: hidden; touch-action: none; }
+#screen { position: absolute; left: 0; top: 0; width: 640px; height: 480px; transform-origin: 0 0; image-rendering: auto; background: #000; }
+#screen.crisp { image-rendering: pixelated; }
+#tools { position: absolute; top: 0; bottom: 0; right: 0; width: max(58px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); background: #050805; border-left: 1px solid #142a16; }
+#tools button { appearance: none; width: 50px; min-height: 46px; border: 1px solid #1f4a24; background: #0c2410; font-size: 11px; font-weight: 600; letter-spacing: .02em; display: grid; place-items: center; gap: 1px; padding: 4px 2px; cursor: pointer; }
+#tools button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#tools button[aria-pressed="true"] { background: var(--yellow); color: #102; border-color: var(--yellow); }
+/* Portrait: the rail moves under the game. */
+@media (orientation: portrait) {
+  #zone { right: env(safe-area-inset-right, 0px); bottom: calc(64px + env(safe-area-inset-bottom, 0px)); top: env(safe-area-inset-top, 0px); }
+  #tools { top: auto; left: 0; width: auto; height: calc(64px + env(safe-area-inset-bottom, 0px)); flex-direction: row; border-left: 0; border-top: 1px solid #142a16; padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  #tools button { width: 54px; }
+}
+#boot { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 14px; pointer-events: none; }
+#toast { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 10px); transform: translateX(-50%); background: rgba(10, 40, 14, .95); border: 1px solid #2c8a37; padding: 8px 14px; font-size: 14px; z-index: 20; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
+#toast.on { opacity: 1; }
+#kbd { position: absolute; left: 0; bottom: 0; width: 2px; height: 2px; opacity: 0; font-size: 16px; border: 0; padding: 0; pointer-events: none; }
+#keys { position: absolute; z-index: 10; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); display: flex; gap: 6px; background: rgba(5, 8, 5, .9); border: 1px solid #1f4a24; padding: 6px; }
+#keys button { appearance: none; border: 1px solid #1f4a24; background: #0c2410; padding: 8px 10px; font-size: 13px; font-weight: 600; min-width: 44px; }
+@media (orientation: landscape) { #keys { bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); } }
+</style>
+</head>
+<body>
+
+<!-- ===== Home ===== -->
+<main id="home">
+  <div class="wrap">
+    <div class="banner">
+      <h1>Championship Manager 97/98</h1>
+      <p>For iPhone and iPad. Bring your own copy.</p>
+    </div>
+
+    <section class="card hidden" id="a2hs" style="border-color:#f5e04a">
+      <h2>First, add it to your Home Screen</h2>
+      <p class="fine" style="margin:0;color:var(--ink)">Tap Share, then Add to Home Screen, and open CM 97/98 from the new icon. Load your game there: the Home Screen app keeps its own storage, works offline, and runs full screen.</p>
+    </section>
+
+    <button class="kick" id="kick" disabled>Kick off</button>
+
+    <section class="card">
+      <h2>Your game</h2>
+      <div class="status"><span class="dot" id="g-dot"></span><span id="g-status">No game loaded yet</span></div>
+      <div class="row">
+        <button class="btn" id="g-load">Load game (.zip)</button>
+        <button class="btn" id="g-editor" disabled>Data editor</button>
+      </div>
+      <div class="prog" id="g-prog"><i></i></div>
+      <input type="file" id="g-file" accept=".zip,application/zip" class="hidden">
+      <details id="g-help">
+        <summary class="fine" style="cursor:pointer">How to get your game onto the phone</summary>
+        <ol class="steps">
+          <li>Put your CM 97/98 folder (the one with CM2E16.EXE in it) in the Files app, in iCloud Drive or On My iPhone.</li>
+          <li>Press and hold the folder, then tap Compress. That makes a .zip.</li>
+          <li>Come back here, tap Load game and pick the .zip.</li>
+        </ol>
+        <p class="fine">The game is stored only on this device. Nothing is uploaded anywhere.</p>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Saves</h2>
+      <div class="fine" id="s-status" style="margin:0">No saves yet</div>
+      <div class="row">
+        <button class="btn" id="s-backup" disabled>Back up saves</button>
+        <button class="btn" id="s-restore">Restore a backup</button>
+        <button class="btn" id="s-wipe" disabled>Delete all saves</button>
+      </div>
+      <input type="file" id="s-file" accept=".zip,application/zip" class="hidden">
+      <p class="fine">Saves are kept on this device automatically after you save in the game. A backup puts a copy in Files.</p>
+    </section>
+
+    <section class="card">
+      <h2>Playing</h2>
+      <ol class="steps">
+        <li>Landscape is best. Tap to click.</li>
+        <li>Pinch to zoom, drag with two fingers to move around. Fit puts it back.</li>
+        <li>Keys opens the keyboard for names and searches.</li>
+        <li>Save in the game as usual, then Exit to come back here.</li>
+      </ol>
+    </section>
+
+    <p class="legal">Unofficial and fan made. Not affiliated with or endorsed by Sports Interactive, Eidos or Square Enix, who own all rights to the game. This page contains no game files. Runs on js-dos (GPL v2).</p>
+  </div>
+</main>
+
+<!-- ===== Game ===== -->
+<div id="stage" class="hidden">
+  <div id="zone"><canvas id="screen" width="640" height="480"></canvas><div id="boot">Starting…</div></div>
+  <div id="tools">
+    <button type="button" id="t-kbd"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="1.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>Keys</button>
+    <button type="button" id="t-rc" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v7M12 10h6"/></svg>Right</button>
+    <button type="button" id="t-fit"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
+    <button type="button" id="t-save"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>Keep</button>
+    <button type="button" id="t-exit"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/></svg>Exit</button>
+  </div>
+  <div id="keys" class="hidden">
+    <button data-k="256">Esc</button><button data-k="257">Enter</button><button data-k="258">Tab</button>
+    <button data-k="265">↑</button><button data-k="264">↓</button><button data-k="266">PgUp</button><button data-k="267">PgDn</button>
+  </div>
+  <input id="kbd" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <div id="toast"></div>
+</div>
+
+<script src="vendor/fflate.js"></script>
+<script src="vendor/emu/emulators.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const log = window.log = [];
+const say = (...a) => { log.push(a.join(" ")); if (log.length > 400) log.shift(); };
+
+/* ===== Storage (IndexedDB) =====
+   game:    the game as a js-dos bundle (zip with the files at the root)
+   saves:   a zip of every file the game has written (saves, hall of fame, edited databases)
+   meta:    names and dates for the home screen */
+const db = (() => {
+  let p = null;
+  const open = () => p || (p = new Promise((res, rej) => {
+    const r = indexedDB.open("cm9798", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const d = await open(); return new Promise((res, rej) => { const t = d.transaction("kv", mode); const r = fn(t.objectStore("kv")); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); };
+  return { get: k => tx("readonly", s => s.get(k)), set: (k, v) => tx("readwrite", s => s.put(v, k)), del: k => tx("readwrite", s => s.delete(k)) };
+})();
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+/* ===== Home screen ===== */
+const fmtMB = n => (n / 1048576).toFixed(1) + " MB";
+const fmtWhen = t => t ? new Date(t).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
+let meta = {};
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
+async function refresh() {
+  $("a2hs").classList.toggle("hidden", !(isIOS && !standalone));
+  meta = (await db.get("meta")) || {};
+  const has = !!meta.game;
+  $("g-dot").classList.toggle("ok", has);
+  $("g-status").textContent = has ? `${meta.game.name} · ${fmtMB(meta.game.size)}` : "No game loaded yet";
+  $("kick").disabled = !has; $("g-editor").disabled = !has || !meta.game.editor;
+  $("g-load").textContent = has ? "Replace game" : "Load game (.zip)";
+  $("g-help").open = !has;
+  const sv = meta.saves;
+  $("s-status").textContent = sv && sv.count ? `${sv.count} file${sv.count === 1 ? "" : "s"} kept, last ${fmtWhen(sv.at)}` : "No saves yet";
+  $("s-backup").disabled = $("s-wipe").disabled = !(sv && sv.count);
+}
+
+function progress(f) { const p = $("g-prog"); p.style.display = f == null ? "none" : "block"; p.firstElementChild.style.width = ((f || 0) * 100) + "%"; }
+
+/* Find the game inside whatever zip was picked: it may be the folder itself, a folder
+   inside it, or the files at the top level. Names are made upper case, as DOS has them. */
+function readGameZip(bytes) {
+  const all = fflate.unzipSync(bytes);
+  const paths = Object.keys(all).filter(p => !p.endsWith("/") && !/(^|\/)(__MACOSX|\.DS_Store)/.test(p));
+  const exe = paths.filter(p => /(^|\/)(CM2E16|CM2E8)\.EXE$/i.test(p)).sort((a, b) => a.length - b.length)[0];
+  if (!exe) throw new Error("That zip doesn't have CM 97/98 in it. Look for the folder with CM2E16.EXE or CM2E8.EXE.");
+  const root = exe.slice(0, exe.lastIndexOf("/") + 1);
+  const files = {}; let size = 0;
+  for (const p of paths) {
+    if (!p.startsWith(root)) continue;
+    const rel = p.slice(root.length).split("/").map(s => s.toUpperCase()).join("/");
+    files[rel] = all[p]; size += all[p].length;
+  }
+  const has = n => Object.prototype.hasOwnProperty.call(files, n);
+  return { files, size, exe16: has("CM2E16.EXE"), exe8: has("CM2E8.EXE"), editor: has("CM2ED.EXE"), name: (root.replace(/\/$/, "").split("/").pop() || "CM 97/98") };
+}
+
+$("g-load").onclick = () => $("g-file").click();
+$("g-file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    progress(0.1);
+    const bytes = new Uint8Array(await f.arrayBuffer()); progress(0.4);
+    await new Promise(r => setTimeout(r, 30));
+    const g = readGameZip(bytes); progress(0.7);
+    const zipIn = {}; for (const [k, v] of Object.entries(g.files)) zipIn[k] = [v, { level: 0 }];
+    const bundle = fflate.zipSync(zipIn);
+    await db.set("game", bundle);
+    // A new game brings its own databases: drop any edited copies kept from the old one,
+    // so they don't override it. Saves and the Hall of Fame stay.
+    if (meta.game) {
+      const kept = await savesMap(), names = Object.keys(kept);
+      const drop = names.filter(n => /\.DB1$/i.test(n));
+      if (drop.length) { for (const n of drop) delete kept[n]; await storeSaves(kept); }
+    }
+    meta.game = { name: g.name, size: g.size, exe: g.exe16 ? "CM2E16.EXE" : "CM2E8.EXE", editor: g.editor, at: Date.now() };
+    await db.set("meta", meta); progress(1);
+    setTimeout(() => progress(null), 400);
+    await refresh();
+    alert(`Loaded ${g.name}. Tap Kick off to play.`);
+  } catch (err) { progress(null); alert(err.message || String(err)); }
+};
+
+/* ===== Saves: merge, back up, restore ===== */
+const SKIP = /^\.jsdos\//;
+async function savesMap() { const z = await db.get("saves"); return z ? await unzipAsync(z) : {}; }
+// Zipping 50 MB of saves happens in fflate's background workers so the game doesn't stall.
+const zipAsync = files => new Promise((res, rej) => fflate.zip(files, { level: 6 }, (e, d) => e ? rej(e) : res(d)));
+const unzipAsync = bytes => new Promise((res, rej) => fflate.unzip(bytes, (e, d) => e ? rej(e) : res(d)));
+async function storeSaves(map) {
+  const names = Object.keys(map).filter(n => !SKIP.test(n) && !n.endsWith("/"));
+  // Copies, because the zip workers take ownership of what they're given.
+  const zin = {}; for (const n of names) zin[n] = map[n].slice();
+  if (names.length) await db.set("saves", await zipAsync(zin)); else await db.del("saves");
+  meta.saves = { count: names.length, at: Date.now() }; await db.set("meta", meta);
+}
+async function shareOrDownload(bytes, name) {
+  const file = new File([bytes], name, { type: "application/zip" });
+  if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 5000);
+}
+$("s-backup").onclick = async () => {
+  const z = await db.get("saves"); if (!z) return;
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  await shareOrDownload(z, `cm9798-saves-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.zip`);
+};
+$("s-restore").onclick = () => $("s-file").click();
+$("s-file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const m = fflate.unzipSync(new Uint8Array(await f.arrayBuffer()));
+    const up = {}; for (const [k, v] of Object.entries(m)) if (!k.endsWith("/") && !SKIP.test(k)) up[k.split("/").pop().toUpperCase()] = v;
+    if (!Object.keys(up).length) throw new Error("That zip is empty.");
+    if (!confirm(`Restore ${Object.keys(up).length} files? Saves with the same names on this device will be replaced.`)) return;
+    await storeSaves(Object.assign(await savesMap(), up)); await refresh();
+  } catch (err) { alert("Couldn't restore that backup: " + (err.message || err)); }
+};
+$("s-wipe").onclick = async () => {
+  if (!confirm("Delete every save on this device? Back them up first if you might want them.")) return;
+  if (!confirm("Really delete all saves? This can't be undone.")) return;
+  await storeSaves({}); await refresh();
+};
+
+/* ===== The emulator ===== */
+emulators.pathPrefix = "vendor/emu/";
+let ci = null, running = false, frame = null, fw = 640, fh = 480, dirty = false;
+const cv = $("screen"), cx = cv.getContext("2d", { alpha: false });
+let img = cx.createImageData(640, 480);
+
+function dosboxConf(cmd) {
+  return `[sdl]
+autolock=false
+usescancodes=true
+[dosbox]
+machine=svga_s3
+memsize=32
+[cpu]
+core=auto
+cputype=auto
+cycles=max
+[mixer]
+nosound=true
+[sblaster]
+sbtype=none
+oplmode=none
+[gus]
+gus=false
+[speaker]
+pcspeaker=false
+tandy=off
+[dos]
+xms=true
+ems=true
+umb=true
+[autoexec]
+mount c .
+c:
+set DOS4G=quiet
+${cmd}
+echo CM9798-QUIT
+`;
+}
+
+function draw() {
+  if (!running) return;
+  if (dirty && frame) {
+    const d = img.data, n = fw * fh;
+    if (frame.length === n * 4) d.set(frame);
+    else for (let i = 0, j = 0; j < n * 4; i += 3, j += 4) { d[j] = frame[i]; d[j + 1] = frame[i + 1]; d[j + 2] = frame[i + 2]; d[j + 3] = 255; }
+    cx.putImageData(img, 0, 0); dirty = false;
+  }
+  requestAnimationFrame(draw);
+}
+
+async function start(which) {
+  const game = await db.get("game");
+  if (!game) { alert("Load your game first."); return; }
+  const saves = await db.get("saves");
+  $("home").classList.add("hidden"); $("stage").classList.remove("hidden");
+  $("boot").textContent = "Starting…"; $("boot").classList.remove("hidden");
+  view.relayout();
+  const cmd = which === "editor" ? "CM2ED.EXE" : (meta.game.exe || "CM2E16.EXE");
+  const init = [game]; if (saves) init.push(saves);
+  init.push({ dosboxConf: dosboxConf(cmd), jsdosConf: { version: "8" } });
+  try {
+    ci = await emulators.dosboxWorker(init);
+  } catch (e) { alert("The emulator couldn't start: " + e); backHome(); return; }
+  window.ci = ci; running = true; requestAnimationFrame(draw);
+  const ev = ci.events();
+  ev.onFrameSize((w, h) => { fw = w; fh = h; cv.width = w; cv.height = h; img = cx.createImageData(w, h); view.relayout(); say("size", w, h); });
+  ev.onFrame((rgb, rgba) => { frame = rgba || rgb; dirty = true; $("boot").classList.add("hidden"); });
+  // When the game quits back to DOS, the startup script prints a marker: keep the saves
+  // and go back to the home screen.
+  ev.onStdout(m => { say("out", m.trim()); if (/^CM9798-QUIT/m.test(m) && running) finish(); });
+  ev.onMessage((t, ...a) => say(t, a.join(" ")));
+  ev.onExit(() => { say("exit"); if (running) finish(); });
+  autosave.start();
+  if (matchMedia("(orientation: portrait) and (pointer: coarse)").matches) toast("Turn your phone sideways for a bigger picture", 3500);
+}
+
+/* Saves: every so often (and when the app goes to the background) ask the emulator for
+   the files written this session, merge them over what's kept, and drop anything the
+   game has since deleted. */
+const autosave = (() => {
+  let timer = 0, busy = null, kept = null, hashes = null;
+  // A fast hash over every byte, so a save that changes one number is still noticed.
+  function hash(u8) {
+    let h = 0x811c9dc5 ^ u8.length;
+    const n4 = u8.length >> 2, v = new Int32Array(u8.buffer, u8.byteOffset, (u8.byteOffset & 3) ? 0 : n4);
+    let i = 0;
+    if (v.length) for (; i < n4; i++) h = Math.imul(h ^ v[i], 16777619);
+    for (let j = v.length ? n4 * 4 : 0; j < u8.length; j++) h = Math.imul(h ^ u8[j], 16777619);
+    return h >>> 0;
+  }
+  async function load() {
+    if (kept) return;
+    kept = await savesMap(); hashes = {};
+    for (const [k, v] of Object.entries(kept)) hashes[k] = hash(v);
+  }
+  async function run(reason) {
+    if (!ci) return false;
+    if (busy) return busy;
+    busy = (async () => {
+      try {
+        await load();
+        const z = await ci.persist(true);
+        const changed = z ? await unzipAsync(z) : {};
+        const tree = await ci.fsTree();
+        const live = new Set(); (function walk(node, pre) { for (const c of node.nodes || []) { const p = pre + c.name; if (c.nodes) walk(c, p + "/"); else live.add(p.toUpperCase()); } })(tree, "");
+        let dirty = false;
+        for (const k of Object.keys(kept)) if (!live.has(k.toUpperCase())) { delete kept[k]; delete hashes[k]; dirty = true; }
+        for (const [n, v] of Object.entries(changed)) {
+          if (SKIP.test(n) || n.endsWith("/")) continue;
+          const h = hash(v);
+          if (hashes[n] !== h) { kept[n] = v; hashes[n] = h; dirty = true; }
+        }
+        if (dirty) { await storeSaves(kept); say("kept", reason, Object.keys(kept).length); }
+        return dirty;
+      } catch (e) { say("keep failed", e); return false; }
+      finally { busy = null; }
+    })();
+    return busy;
+  }
+  return {
+    start() { kept = null; hashes = null; clearInterval(timer); timer = setInterval(() => run("timer"), 45000); },
+    stop() { clearInterval(timer); },
+    run,
+  };
+})();
+document.addEventListener("visibilitychange", () => { if (document.hidden && running) autosave.run("hidden"); });
+window.addEventListener("pagehide", () => { if (running) autosave.run("pagehide"); });
+
+async function finish() {
+  if (!ci) return backHome();
+  toast("Keeping your saves…", 5000);
+  await autosave.run("exit");
+  autosave.stop(); running = false;
+  try { await ci.exit(); } catch (e) {}
+  ci = null; window.ci = null;
+  backHome();
+}
+function backHome() { running = false; $("stage").classList.add("hidden"); $("home").classList.remove("hidden"); $("keys").classList.add("hidden"); refresh(); }
+
+$("kick").onclick = () => start("game");
+$("g-editor").onclick = () => start("editor");
+$("t-exit").onclick = () => {
+  if (!confirm("Leave the game? Anything you've saved in the game is kept. Unsaved progress is lost.")) return;
+  finish();
+};
+$("t-save").onclick = async () => { toast("Keeping your saves…"); const did = await autosave.run("button"); toast(did ? "Saves kept on this device" : "Nothing new to keep. Save in the game first."); };
+
+let toastTimer = 0;
+function toast(msg, ms = 2200) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), ms); }
+
+/* ===== View: fit, pinch zoom, pan ===== */
+const view = (() => {
+  const zone = $("zone");
+  let fit = 1, s = 1, ox = 0, oy = 0;
+  function clamp() {
+    const zw = zone.clientWidth, zh = zone.clientHeight, w = fw * s, h = fh * s;
+    ox = w <= zw ? (zw - w) / 2 : Math.min(0, Math.max(zw - w, ox));
+    oy = h <= zh ? (zh - h) / 2 : Math.min(0, Math.max(zh - h, oy));
+  }
+  function apply() {
+    clamp();
+    cv.style.width = fw + "px"; cv.style.height = fh + "px";
+    cv.style.transform = `translate(${ox}px, ${oy}px) scale(${s})`;
+    cv.classList.toggle("crisp", s * devicePixelRatio >= 1.95);
+  }
+  function relayout() {
+    const zw = zone.clientWidth, zh = zone.clientHeight; if (!zw || !zh) return;
+    const was = s === fit; fit = Math.min(zw / fw, zh / fh);
+    if (was || s < fit) s = fit;
+    apply();
+  }
+  function zoomAt(ns, x, y) {
+    const r = zone.getBoundingClientRect(); x -= r.left; y -= r.top;
+    ns = Math.max(fit, Math.min(fit * 4, ns));
+    ox = x - (x - ox) * ns / s; oy = y - (y - oy) * ns / s; s = ns; apply();
+  }
+  function pan(dx, dy) { ox += dx; oy += dy; apply(); }
+  function toGame(clientX, clientY) {
+    const r = zone.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(1, (clientX - r.left - ox) / (fw * s))), y: Math.max(0, Math.min(1, (clientY - r.top - oy) / (fh * s))) };
+  }
+  new ResizeObserver(relayout).observe(zone);
+  window.addEventListener("orientationchange", () => setTimeout(relayout, 300));
+  $("t-fit").onclick = () => { s = fit; apply(); };
+  return { relayout, zoomAt, pan, toGame, get scale() { return s; } };
+})();
+
+/* ===== Touch to mouse =====
+   Tap: left click where you tapped. Press and hold: right click (or drag with the right
+   button held). One finger drag: left-button drag. Two fingers: pinch to zoom, drag to move.
+   The game reads the mouse once per frame, so the pointer settles before the press and
+   the press lasts a few frames. */
+(function touch() {
+  const zone = $("zone");
+  const BTN_L = 0, BTN_R = 1;
+  const SETTLE = 90, HOLD = 90;
+  let start = null, dragging = false, rdrag = false, consumed = false, holdTimer = 0, pinch = null, rightNext = false;
+  const move = (x, y) => { if (!ci) return; const p = view.toGame(x, y); ci.sendMouseMotion(p.x, p.y); };
+  const button = (b, down) => { if (ci) ci.sendMouseButton(b, down); };
+  function click(x, y, b) { move(x, y); setTimeout(() => { move(x, y); button(b, true); setTimeout(() => button(b, false), HOLD); }, SETTLE); }
+  const setRight = v => { rightNext = v; $("t-rc").setAttribute("aria-pressed", String(v)); };
+  $("t-rc").onclick = () => setRight(!rightNext);
+  const two = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, d: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)) });
+  const opts = { passive: false };
+  zone.addEventListener("touchstart", e => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      clearTimeout(holdTimer); consumed = true;
+      if (dragging) { button(BTN_L, false); dragging = false; } if (rdrag) { button(BTN_R, false); rdrag = false; }
+      pinch = two(e.touches[0], e.touches[1]); return;
+    }
+    if (e.touches.length > 2) return;
+    const t = e.changedTouches[0]; start = { x: t.clientX, y: t.clientY }; dragging = rdrag = consumed = false;
+    move(t.clientX, t.clientY);
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { if (start && !dragging && !consumed) { consumed = true; rdrag = true; move(start.x, start.y); button(BTN_R, true); toast("Right button", 900); } }, 600);
+  }, opts);
+  zone.addEventListener("touchmove", e => {
+    e.preventDefault();
+    if (e.touches.length === 2 && pinch) {
+      const now = two(e.touches[0], e.touches[1]);
+      view.zoomAt(view.scale * now.d / pinch.d, now.x, now.y); view.pan(now.x - pinch.x, now.y - pinch.y);
+      pinch = now; return;
+    }
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (rdrag) { move(t.clientX, t.clientY); return; }
+    if (consumed) return;
+    if (!dragging && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) {
+      dragging = true; clearTimeout(holdTimer); move(start.x, start.y); button(rightNext ? BTN_R : BTN_L, true);
+    }
+    if (dragging) move(t.clientX, t.clientY);
+  }, opts);
+  const end = e => {
+    e.preventDefault();
+    if (e.touches.length < 2) pinch = null;
+    clearTimeout(holdTimer);
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (rdrag) button(BTN_R, false);
+    else if (dragging) { move(t.clientX, t.clientY); button(rightNext ? BTN_R : BTN_L, false); if (rightNext) setRight(false); }
+    else if (!consumed) { click(t.clientX, t.clientY, rightNext ? BTN_R : BTN_L); if (rightNext) setRight(false); }
+    start = null; dragging = rdrag = false;
+  };
+  zone.addEventListener("touchend", end, opts);
+  zone.addEventListener("touchcancel", end, opts);
+  // A real mouse or trackpad (iPad, Mac, testing on a computer).
+  zone.addEventListener("mousemove", e => move(e.clientX, e.clientY));
+  zone.addEventListener("mousedown", e => { e.preventDefault(); move(e.clientX, e.clientY); button(e.button === 2 ? BTN_R : BTN_L, true); });
+  zone.addEventListener("mouseup", e => { move(e.clientX, e.clientY); button(e.button === 2 ? BTN_R : BTN_L, false); });
+  zone.addEventListener("contextmenu", e => e.preventDefault());
+  zone.addEventListener("wheel", e => { e.preventDefault(); if (e.ctrlKey) view.zoomAt(view.scale * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX, e.clientY); else view.pan(-e.deltaX, -e.deltaY); }, opts);
+})();
+
+/* ===== Keyboard =====
+   Keys opens the phone's keyboard through a hidden text field, plus a strip of keys the
+   phone keyboard doesn't have. Typed text is turned into DOS key presses. */
+(function keyboard() {
+  const inp = $("kbd");
+  const K = { Backspace: 259, Enter: 257, Escape: 256, Tab: 258, ArrowUp: 265, ArrowDown: 264, ArrowLeft: 263, ArrowRight: 262, PageUp: 266, PageDown: 267, Home: 268, End: 269, Delete: 261, Shift: 340, " ": 32 };
+  for (let i = 1; i <= 12; i++) K["F" + i] = 289 + i;
+  const PUNCT = { ".": 46, ",": 44, "-": 45, "'": 39, "/": 47, ";": 59, "=": 61, "[": 91, "]": 93, "\\": 92, "`": 96 };
+  const SHIFTED = { "!": 49, "@": 50, "#": 51, "$": 52, "%": 53, "^": 54, "&": 55, "*": 56, "(": 57, ")": 48, "_": 45, "+": 61, ":": 59, "\"": 39, "?": 47, "<": 44, ">": 46 };
+  let chain = Promise.resolve();
+  const later = ms => new Promise(r => setTimeout(r, ms));
+  function press(code, shift) {
+    chain = chain.then(async () => {
+      if (!ci) return;
+      if (shift) { ci.sendKeyEvent(340, true); await later(30); }
+      ci.sendKeyEvent(code, true); await later(40); ci.sendKeyEvent(code, false); await later(30);
+      if (shift) { ci.sendKeyEvent(340, false); await later(20); }
+    });
+  }
+  function typeChar(ch) {
+    if (/^[a-z]$/.test(ch)) return press(ch.toUpperCase().charCodeAt(0), false);
+    if (/^[A-Z]$/.test(ch)) return press(ch.charCodeAt(0), true);
+    if (/^[0-9]$/.test(ch)) return press(ch.charCodeAt(0), false);
+    if (ch === " ") return press(32, false);
+    if (PUNCT[ch]) return press(PUNCT[ch], false);
+    if (SHIFTED[ch]) return press(SHIFTED[ch], true);
+    // Accented letters: send the plain letter (the game's names are plain ASCII).
+    const plain = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (plain !== ch && plain.length === 1) typeChar(plain);
+  }
+  window.cmType = s => { for (const ch of s) typeChar(ch); };
+  window.cmKey = (code, shift) => press(code, shift);
+  $("t-kbd").onclick = () => {
+    const on = $("keys").classList.contains("hidden");
+    $("keys").classList.toggle("hidden", !on); $("t-kbd").setAttribute("aria-pressed", String(on));
+    if (on) inp.focus({ preventScroll: true }); else inp.blur();
+  };
+  $("keys").addEventListener("click", e => { const b = e.target.closest("button[data-k]"); if (b) { press(+b.dataset.k, false); } });
+  inp.addEventListener("input", e => {
+    if (e.inputType === "deleteContentBackward") press(259, false);
+    else if (e.inputType === "insertLineBreak") press(257, false);
+    else if (e.data) for (const ch of e.data) typeChar(ch);
+    inp.value = "";
+  });
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); press(257, false); return; }
+    if (e.key === "Backspace" && !inp.value) { e.preventDefault(); press(259, false); return; }
+    if (K[e.key] && e.key.length > 1) { e.preventDefault(); press(K[e.key], e.shiftKey); }
+  });
+  // A hardware keyboard with nothing focused (iPad keyboard, computer).
+  window.addEventListener("keydown", e => {
+    if (!running || document.activeElement === inp) return;
+    if (e.metaKey || e.ctrlKey) return;
+    e.preventDefault();
+    if (K[e.key] && (e.key.length > 1 || e.key === " ")) press(K[e.key], e.shiftKey);
+    else if (e.key.length === 1) typeChar(e.key);
+  });
+})();
+
+/* ===== Offline ===== */
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
+refresh();
+</script>
+</body>
+</html>
