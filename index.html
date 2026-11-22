@@ -83,6 +83,13 @@ ol.steps li { margin: 3px 0; }
       <p class="fine" style="margin:0;color:var(--ink)">Tap Share, then Add to Home Screen, and open CM 97/98 from the new icon. Load your game there: the Home Screen app keeps its own storage, works offline, and runs full screen.</p>
     </section>
 
+    <section class="card hidden" id="crash" style="border-color:#e0a040">
+      <h2 style="color:#f0b860">Last game closed unexpectedly</h2>
+      <p class="fine" id="crash-text" style="margin:0;color:var(--ink)"></p>
+      <details><summary class="fine" style="cursor:pointer">Details for fixing it</summary><pre id="crash-log" class="fine" style="white-space:pre-wrap;word-break:break-word;font-size:11px;margin:6px 0 0"></pre></details>
+      <div class="row"><button class="btn" id="crash-copy">Copy details</button><button class="btn" id="crash-ok">OK</button></div>
+    </section>
+
     <button class="kick" id="kick" disabled>Kick off</button>
 
     <section class="card">
@@ -231,9 +238,8 @@ $("g-file").onchange = async e => {
     // A new game brings its own databases: drop any edited copies kept from the old one,
     // so they don't override it. Saves and the Hall of Fame stay.
     if (meta.game) {
-      const kept = await savesMap(), names = Object.keys(kept);
-      const drop = names.filter(n => /\.DB1$/i.test(n));
-      if (drop.length) { for (const n of drop) delete kept[n]; await storeSaves(kept); }
+      const idx = await store.index(), drop = Object.keys(idx).filter(n => /\.DB1$/i.test(n));
+      if (drop.length) { for (const n of drop) await store.drop(idx, n); await store.writeIndex(idx); }
     }
     meta.game = { name: g.name, size: g.size, exe: g.exe16 ? "CM2E16.EXE" : "CM2E8.EXE", editor: g.editor, at: Date.now() };
     await db.set("meta", meta); progress(1);
@@ -243,19 +249,101 @@ $("g-file").onchange = async e => {
   } catch (err) { progress(null); alert(err.message || String(err)); }
 };
 
-/* ===== Saves: merge, back up, restore ===== */
+/* ===== Saves =====
+   Each file the game writes is kept on its own, compressed, under "f:NAME", with an
+   index of {hash, crc, size}. Only files that changed get recompressed, and a zip (to
+   start the game, or for a backup) is stitched together from the stored pieces without
+   unpacking them, so memory stays low. (Older versions kept one big zip: migrated.) */
 const SKIP = /^\.jsdos\//;
-async function savesMap() { const z = await db.get("saves"); return z ? await unzipAsync(z) : {}; }
-// Zipping 50 MB of saves happens in fflate's background workers so the game doesn't stall.
-const zipAsync = files => new Promise((res, rej) => fflate.zip(files, { level: 6 }, (e, d) => e ? rej(e) : res(d)));
 const unzipAsync = bytes => new Promise((res, rej) => fflate.unzip(bytes, (e, d) => e ? rej(e) : res(d)));
-async function storeSaves(map) {
-  const names = Object.keys(map).filter(n => !SKIP.test(n) && !n.endsWith("/"));
-  // Copies, because the zip workers take ownership of what they're given.
-  const zin = {}; for (const n of names) zin[n] = map[n].slice();
-  if (names.length) await db.set("saves", await zipAsync(zin)); else await db.del("saves");
-  meta.saves = { count: names.length, at: Date.now() }; await db.set("meta", meta);
+const deflateAsync = bytes => new Promise((res, rej) => fflate.deflate(bytes, { level: 6 }, (e, d) => e ? rej(e) : res(d)));
+const inflateAsync = bytes => new Promise((res, rej) => fflate.inflate(bytes, (e, d) => e ? rej(e) : res(d)));
+
+// A fast hash over every byte, so a save that changes one number is still noticed.
+function hash(u8) {
+  let h = 0x811c9dc5 ^ u8.length;
+  const n4 = u8.length >> 2, v = (u8.byteOffset & 3) ? null : new Int32Array(u8.buffer, u8.byteOffset, n4);
+  if (v) for (let i = 0; i < n4; i++) h = Math.imul(h ^ v[i], 16777619);
+  for (let j = v ? n4 * 4 : 0; j < u8.length; j++) h = Math.imul(h ^ u8[j], 16777619);
+  return h >>> 0;
 }
+const CRC = (() => { const t = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c; } return t; })();
+function crc32(u8) { let c = -1; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; }
+
+// Read a zip without copying: [{name, method, data}] where data is a view into the zip.
+function zipEntries(z) {
+  const dv = new DataView(z.buffer, z.byteOffset, z.byteLength), out = [];
+  let e = z.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("not a zip");
+  let p = dv.getUint32(e + 16, true); const n = dv.getUint16(e + 10, true), td = new TextDecoder();
+  for (let i = 0; i < n; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("bad zip directory");
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+    const name = td.decode(z.subarray(p + 46, p + 46 + nl));
+    if (csize === 0xFFFFFFFF || usize === 0xFFFFFFFF || lo === 0xFFFFFFFF) throw new Error("zip64");
+    const ds = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true);
+    out.push({ name, method, usize, data: z.subarray(ds, ds + csize) });
+    p += 46 + nl + xl + cl;
+  }
+  return out;
+}
+// Build a zip from already-deflated pieces: [{name, crc, size, data}].
+function zipFromPieces(pieces) {
+  const te = new TextEncoder(); let total = 22; const names = pieces.map(p => te.encode(p.name));
+  pieces.forEach((p, i) => total += 30 + 46 + 2 * names[i].length + p.data.length);
+  const z = new Uint8Array(total), dv = new DataView(z.buffer); let o = 0; const offs = [];
+  pieces.forEach((p, i) => {
+    offs.push(o);
+    dv.setUint32(o, 0x04034b50, true); dv.setUint16(o + 4, 20, true); dv.setUint16(o + 8, 8, true);
+    dv.setUint16(o + 12, 0x2821, true); dv.setUint32(o + 14, p.crc, true); dv.setUint32(o + 18, p.data.length, true); dv.setUint32(o + 22, p.size, true);
+    dv.setUint16(o + 26, names[i].length, true); z.set(names[i], o + 30); z.set(p.data, o + 30 + names[i].length);
+    o += 30 + names[i].length + p.data.length;
+  });
+  const cd = o;
+  pieces.forEach((p, i) => {
+    dv.setUint32(o, 0x02014b50, true); dv.setUint16(o + 4, 20, true); dv.setUint16(o + 6, 20, true); dv.setUint16(o + 10, 8, true);
+    dv.setUint16(o + 14, 0x2821, true); dv.setUint32(o + 16, p.crc, true); dv.setUint32(o + 20, p.data.length, true); dv.setUint32(o + 24, p.size, true);
+    dv.setUint16(o + 28, names[i].length, true); dv.setUint32(o + 42, offs[i], true); z.set(names[i], o + 46);
+    o += 46 + names[i].length;
+  });
+  dv.setUint32(o, 0x06054b50, true); dv.setUint16(o + 8, pieces.length, true); dv.setUint16(o + 10, pieces.length, true);
+  dv.setUint32(o + 12, o - cd, true); dv.setUint32(o + 16, cd, true);
+  return z;
+}
+
+const store = {
+  async index() { await this.migrate(); return (await db.get("saveIndex")) || {}; },
+  async writeIndex(idx) {
+    await db.set("saveIndex", idx);
+    meta.saves = { count: Object.keys(idx).length, at: Date.now() }; await db.set("meta", meta);
+  },
+  // Keep one file (data may be a view into something bigger: it's copied for the worker).
+  async put(idx, name, data, h) {
+    const def = await deflateAsync(data.slice());
+    await db.set("f:" + name, def);
+    idx[name] = { h: h === undefined ? hash(data) : h, crc: crc32(data), size: data.length };
+  },
+  async drop(idx, name) { delete idx[name]; await db.del("f:" + name); },
+  async zip() {           // every kept file, as a zip (no unpacking)
+    const idx = await this.index(), pieces = [];
+    for (const [name, m] of Object.entries(idx)) { const d = await db.get("f:" + name); if (d) pieces.push({ name, crc: m.crc, size: m.size, data: d }); }
+    return pieces.length ? zipFromPieces(pieces) : null;
+  },
+  async putMany(files) {  // {NAME: bytes}, e.g. from a backup
+    const idx = await this.index();
+    for (const [n, v] of Object.entries(files)) await this.put(idx, n, v);
+    await this.writeIndex(idx);
+  },
+  async wipe() { const idx = await this.index(); for (const n of Object.keys(idx)) await this.drop(idx, n); await this.writeIndex(idx); },
+  async migrate() {
+    const old = await db.get("saves"); if (!old) return;
+    const files = await unzipAsync(old), idx = (await db.get("saveIndex")) || {};
+    for (const [n, v] of Object.entries(files)) if (!SKIP.test(n) && !n.endsWith("/")) await this.put(idx, n, v);
+    await db.set("saveIndex", idx); await db.del("saves");
+  },
+};
+
 async function shareOrDownload(bytes, name) {
   const file = new File([bytes], name, { type: "application/zip" });
   if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia("(pointer: coarse)").matches) {
@@ -265,7 +353,7 @@ async function shareOrDownload(bytes, name) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 5000);
 }
 $("s-backup").onclick = async () => {
-  const z = await db.get("saves"); if (!z) return;
+  const z = await store.zip(); if (!z) return;
   const d = new Date(), pad = n => String(n).padStart(2, "0");
   await shareOrDownload(z, `cm9798-saves-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.zip`);
 };
@@ -277,14 +365,41 @@ $("s-file").onchange = async e => {
     const up = {}; for (const [k, v] of Object.entries(m)) if (!k.endsWith("/") && !SKIP.test(k)) up[k.split("/").pop().toUpperCase()] = v;
     if (!Object.keys(up).length) throw new Error("That zip is empty.");
     if (!confirm(`Restore ${Object.keys(up).length} files? Saves with the same names on this device will be replaced.`)) return;
-    await storeSaves(Object.assign(await savesMap(), up)); await refresh();
+    await store.putMany(up); await refresh();
   } catch (err) { alert("Couldn't restore that backup: " + (err.message || err)); }
 };
 $("s-wipe").onclick = async () => {
   if (!confirm("Delete every save on this device? Back them up first if you might want them.")) return;
   if (!confirm("Really delete all saves? This can't be undone.")) return;
-  await storeSaves({}); await refresh();
+  await store.wipe(); await refresh();
 };
+
+/* ===== Crash note =====
+   While the game runs, a small note is kept in localStorage and refreshed every few
+   seconds. A clean exit removes it. If the app is opened and the note is still there,
+   the last session ended without saying goodbye: in the foreground that's almost always
+   iOS closing the app for memory. In the background it's normal, so nothing is shown. */
+const crumb = (() => {
+  const K = "cm-session"; let timer = 0, started = 0;
+  const write = state => { try { localStorage.setItem(K, JSON.stringify({ state, started, at: Date.now(), screen: `${innerWidth}x${innerHeight}@${devicePixelRatio}`, paused: power.paused, view: view.scale.toFixed(2), log: log.slice(-14) })); } catch (e) {} };
+  return {
+    begin() { started = Date.now(); write("fg"); clearInterval(timer); timer = setInterval(() => write(document.hidden ? "bg" : "fg"), 5000); },
+    mark() { if (started) write(document.hidden ? "bg" : "fg"); },
+    end() { clearInterval(timer); started = 0; try { localStorage.removeItem(K); } catch (e) {} },
+    check() {
+      let c = null; try { c = JSON.parse(localStorage.getItem(K) || "null"); localStorage.removeItem(K); } catch (e) {}
+      if (!c || c.state !== "fg") return;
+      const t = d => new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const mins = Math.round((c.at - c.started) / 60000);
+      $("crash-text").textContent = `It stopped around ${t(c.at)}, ${mins} minute${mins === 1 ? "" : "s"} into the session. On iPhone this is usually iOS closing the app when it runs short of memory. Saves you made in the game before then are kept, last ${meta.saves && meta.saves.at ? t(meta.saves.at) : "unknown"}.`;
+      const details = [`app v3`, `started ${new Date(c.started).toISOString()}`, `last seen ${new Date(c.at).toISOString()}`, `screen ${c.screen}, view ${c.view}, paused ${c.paused}`, navigator.userAgent, "", ...c.log].join("\n");
+      $("crash-log").textContent = details;
+      $("crash").classList.remove("hidden");
+      $("crash-ok").onclick = () => $("crash").classList.add("hidden");
+      $("crash-copy").onclick = async () => { try { await navigator.clipboard.writeText(details); $("crash-copy").textContent = "Copied"; } catch (e) { alert(details); } };
+    },
+  };
+})();
 
 /* ===== The emulator ===== */
 emulators.pathPrefix = "vendor/emu/";
@@ -412,13 +527,14 @@ const power = (() => {
     hide() { hidden = true; clearTimeout(peekTimer); pause(); },
     show() { hidden = false; lastInput = now(); resume(); },
     get paused() { return paused; },
+    get lastInput() { return lastInput; },
   };
 })();
 
 async function start(which) {
   const game = await db.get("game");
   if (!game) { alert("Load your game first."); return; }
-  const saves = await db.get("saves");
+  const saves = await store.zip();
   $("home").classList.add("hidden"); $("stage").classList.remove("hidden");
   $("boot").textContent = "Starting…"; $("boot").classList.remove("hidden");
   view.relayout();
@@ -437,61 +553,62 @@ async function start(which) {
   ev.onStdout(m => { say("out", m.trim()); if (/^CM9798-QUIT/m.test(m) && running) finish(); });
   ev.onMessage((t, ...a) => say(t, a.join(" ")));
   ev.onExit(() => { say("exit"); if (running) finish(); });
-  autosave.start();
+  autosave.start(new Set(zipEntries(game).map(f => f.name.toUpperCase())), which === "editor"); crumb.begin();
   if (matchMedia("(orientation: portrait) and (pointer: coarse)").matches) toast("Turn your phone sideways for a bigger picture", 3500);
 }
 
-/* Saves: every so often (and when the app goes to the background) ask the emulator for
-   the files written this session, merge them over what's kept, and drop anything the
-   game has since deleted. */
+/* Saves: ask the emulator which files changed this session, and keep the ones that
+   differ from what's stored. It runs when you leave, when the app goes to the
+   background, on Keep, and every minute while you're playing, never mid-processing
+   and not when nothing has been touched since the last check. */
 const autosave = (() => {
-  let timer = 0, busy = null, kept = null, hashes = null;
-  // A fast hash over every byte, so a save that changes one number is still noticed.
-  function hash(u8) {
-    let h = 0x811c9dc5 ^ u8.length;
-    const n4 = u8.length >> 2, v = new Int32Array(u8.buffer, u8.byteOffset, (u8.byteOffset & 3) ? 0 : n4);
-    let i = 0;
-    if (v.length) for (; i < n4; i++) h = Math.imul(h ^ v[i], 16777619);
-    for (let j = v.length ? n4 * 4 : 0; j < u8.length; j++) h = Math.imul(h ^ u8[j], 16777619);
-    return h >>> 0;
+  let timer = 0, busy = null, lastRun = 0, gameNames = null, editor = false;
+  const pause = ms => new Promise(r => setTimeout(r, ms));
+  // The files to look at, one at a time: anything the game made (save slots), plus the
+  // save index and Hall of Fame, which ship with the game but get rewritten. In the
+  // Data Editor, ask the emulator for everything changed (databases can be edited).
+  async function candidates(tree) {
+    const all = []; (function walk(node, pre) { for (const c of node.nodes || []) { const p = pre + c.name; if (c.nodes) walk(c, p + "/"); else all.push(p); } })(tree, "");
+    return all.filter(p => !SKIP.test(p) && (!gameNames.has(p.toUpperCase()) || /^(GAMESS[0-9]*\.IDX|HISCORES\.BIN)$/i.test(p)));
   }
-  async function load() {
-    if (kept) return;
-    kept = await savesMap(); hashes = {};
-    for (const [k, v] of Object.entries(kept)) hashes[k] = hash(v);
-  }
-  async function run(reason) {
+  async function run(reason, force = true) {
     if (!ci) return false;
     if (busy) return busy;
+    if (!force && (power.lastInput <= lastRun || BUSY.now())) return false;
+    lastRun = performance.now();
     busy = (async () => {
       try {
-        await load();
-        const z = await ci.persist(true);
-        const changed = z ? await unzipAsync(z) : {};
         const tree = await ci.fsTree();
-        const live = new Set(); (function walk(node, pre) { for (const c of node.nodes || []) { const p = pre + c.name; if (c.nodes) walk(c, p + "/"); else live.add(p.toUpperCase()); } })(tree, "");
-        let dirty = false;
-        for (const k of Object.keys(kept)) if (!live.has(k.toUpperCase())) { delete kept[k]; delete hashes[k]; dirty = true; }
-        for (const [n, v] of Object.entries(changed)) {
-          if (SKIP.test(n) || n.endsWith("/")) continue;
-          const h = hash(v);
-          if (hashes[n] !== h) { kept[n] = v; hashes[n] = h; dirty = true; }
+        const all = []; (function walk(node, pre) { for (const c of node.nodes || []) { const p = pre + c.name; if (c.nodes) walk(c, p + "/"); else all.push(p); } })(tree, "");
+        const live = new Set(all.map(p => p.toUpperCase()));
+        const idx = await store.index(); let changed = 0;
+        const consider = async (name, data) => {
+          const h = hash(data), was = idx[name];
+          if (!was || was.h !== h || was.size !== data.length) { await store.put(idx, name, data, h); changed++; }
+        };
+        if (editor) {
+          const z = await ci.persist(true);
+          for (const f of zipEntries(z)) if (!SKIP.test(f.name) && !f.name.endsWith("/")) await consider(f.name, f.method === 8 ? await inflateAsync(f.data.slice()) : f.data);
+        } else {
+          for (const name of await candidates(tree)) { let d = await ci.fsReadFile(name); await consider(name, d); d = null; await pause(15); }
         }
-        if (dirty) { await storeSaves(kept); say("kept", reason, Object.keys(kept).length); }
-        return dirty;
+        for (const n of Object.keys(idx)) if (!live.has(n.toUpperCase())) { await store.drop(idx, n); changed++; }
+        if (changed) { await store.writeIndex(idx); say("kept", reason, changed); }
+        return changed > 0;
       } catch (e) { say("keep failed", e); return false; }
       finally { busy = null; }
     })();
     return busy;
   }
   return {
-    start() { kept = null; hashes = null; clearInterval(timer); timer = setInterval(() => run("timer"), 45000); },
+    start(names, isEditor) { gameNames = names; editor = isEditor; lastRun = performance.now(); clearInterval(timer); timer = setInterval(() => run("timer", false), 90000); },
     stop() { clearInterval(timer); },
     run,
   };
 })();
 document.addEventListener("visibilitychange", async () => {
   if (!running) return;
+  crumb.mark();
   if (document.hidden) { await autosave.run("hidden"); if (document.hidden) power.hide(); }
   else power.show();
 });
@@ -506,7 +623,7 @@ async function finish() {
   ci = null; window.ci = null;
   backHome();
 }
-function backHome() { running = false; $("stage").classList.add("hidden"); $("home").classList.remove("hidden"); $("keys").classList.add("hidden"); refresh(); }
+function backHome() { crumb.end(); running = false; $("stage").classList.add("hidden"); $("home").classList.remove("hidden"); $("keys").classList.add("hidden"); refresh(); }
 
 $("kick").onclick = () => start("game");
 $("g-editor").onclick = () => start("editor");
@@ -534,7 +651,7 @@ const view = (() => {
     clamp();
     cv.style.width = fw + "px"; cv.style.height = fh + "px";
     cv.style.transform = `translate(${ox}px, ${oy}px) scale(${s})`;
-    setPrescale(Math.max(1, Math.min(4, Math.floor(s * devicePixelRatio))));
+    setPrescale(Math.max(1, Math.min(3, Math.floor(s * devicePixelRatio))));
     label();
   }
   // The button says what it will do: Reset (after zooming), or switch Wide / Fit.
@@ -740,7 +857,7 @@ const loupe = (() => {
 
 /* ===== Offline ===== */
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
-refresh();
+refresh().then(() => crumb.check());
 </script>
 </body>
 </html>

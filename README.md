@@ -23,7 +23,9 @@ A personal project: the original DOS version of CM 97/98 running in Safari throu
 
 ## Saves
 
-Saves are kept in the browser's storage on the device, separately from the game. Use Back up saves on the home screen to put a copy in Files, and Restore a backup to bring one back (to the same device or another one).
+Saves are kept in the browser's storage on the device, separately from the game, one file at a time, so only what changed is rewritten. Use Back up saves on the home screen to put a copy in Files, and Restore a backup to bring one back (to the same device or another one).
+
+If iOS ever closes the app mid-game (usually when it's short of memory), the next launch says so and shows details you can copy.
 
 Replacing the game (for example with an updated database) keeps your saves and Hall of Fame. Any database you changed in the Data Editor is dropped so the new one is used.
 
