@@ -48,7 +48,6 @@ ol.steps li { margin: 3px 0; }
 #stage { position: fixed; inset: 0; background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
 #zone { position: absolute; top: 0; bottom: 0; left: env(safe-area-inset-left, 0px); right: max(58px, env(safe-area-inset-right, 0px)); overflow: hidden; touch-action: none; }
 #screen { position: absolute; left: 0; top: 0; width: 640px; height: 480px; transform-origin: 0 0; image-rendering: auto; background: #000; }
-#loupe { position: absolute; left: 0; top: 0; width: 132px; height: 132px; border-radius: 50%; border: 3px solid #f5e04a; box-shadow: 0 6px 22px rgba(0,0,0,.6); z-index: 15; pointer-events: none; background: #000; }
 #tools { position: absolute; top: 0; bottom: 0; right: 0; width: max(58px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); background: #050805; border-left: 1px solid #142a16; }
 #tools button { appearance: none; width: 50px; min-height: 46px; border: 1px solid #1f4a24; background: #0c2410; font-size: 11px; font-weight: 600; letter-spacing: .02em; display: grid; place-items: center; gap: 1px; padding: 4px 2px; cursor: pointer; }
 #tools button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -127,10 +126,9 @@ ol.steps li { margin: 3px 0; }
     <section class="card">
       <h2>Playing</h2>
       <ol class="steps">
-        <li>Landscape is best. Tap to click. Swipe to scroll.</li>
-        <li>Press and hold to bring up a magnifier, slide to aim, let go to click.</li>
-        <li>Wide fills the screen width (bigger text), Fit shows the whole screen. Pinch to zoom.</li>
-        <li>Right makes your next tap a right click.</li>
+        <li>Landscape is best. Tap to click. Drag with one finger to drag (players, arrows on the tactics screen).</li>
+        <li>Press and hold for a right click. Right makes your next tap or drag use the right button.</li>
+        <li>Scroll with two fingers, pinch to zoom. Wide fills the screen width (bigger text), Fit shows the whole screen.</li>
         <li>Keys opens the keyboard for names and searches.</li>
         <li>Save in the game as usual, then Exit to come back here.</li>
       </ol>
@@ -155,7 +153,6 @@ ol.steps li { margin: 3px 0; }
     <button data-k="265">↑</button><button data-k="264">↓</button><button data-k="266">PgUp</button><button data-k="267">PgDn</button>
   </div>
   <input id="kbd" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-  <canvas id="loupe" class="hidden"></canvas>
   <div id="toast"></div>
 </div>
 
@@ -460,7 +457,7 @@ function draw() {
     const d = img.data, n = fw * fh;
     if (frame.length === n * 4) d.set(frame);
     else for (let i = 0, j = 0; j < n * 4; i += 3, j += 4) { d[j] = frame[i]; d[j + 1] = frame[i + 1]; d[j + 2] = frame[i + 2]; d[j + 3] = 255; }
-    sx.putImageData(img, 0, 0); dirty = false; blit(); loupe.redraw();
+    sx.putImageData(img, 0, 0); dirty = false; blit();
   }
 }
 const wantDraw = () => { if (!rafPending) { rafPending = true; requestAnimationFrame(draw); } };
@@ -689,58 +686,20 @@ const view = (() => {
   return { relayout, zoomAt, pan, toGame, get scale() { return s; } };
 })();
 
-/* ===== Magnifier =====
-   While you hold a finger down, a bubble above it shows what's underneath, enlarged,
-   with a cross on the exact spot that will be clicked. */
-const loupe = (() => {
-  const el = $("loupe"), lx = el.getContext("2d");
-  const SIZE = 132, SPAN = 44;            // CSS px on screen; game px shown across it
-  let on = false, gx = 0, gy = 0;
-  function size() { const d = devicePixelRatio || 1; el.width = el.height = Math.round(SIZE * d); }
-  function redraw() {
-    if (!on) return;
-    const W = el.width, k = W / SPAN;
-    lx.imageSmoothingEnabled = false;
-    lx.fillStyle = "#000"; lx.fillRect(0, 0, W, W);
-    const x0 = gx - SPAN / 2, y0 = gy - SPAN / 2;
-    lx.drawImage(src, x0, y0, SPAN, SPAN, 0, 0, W, W);
-    // Cross on the hot spot (pixel centre).
-    const c = (SPAN / 2 + 0.5) * k, r = 7 * (W / SIZE);
-    lx.lineWidth = Math.max(1.5, W / SIZE * 1.5);
-    for (const [col, w] of [["#000", lx.lineWidth + 2 * (W / SIZE)], ["#f5e04a", lx.lineWidth]]) {
-      lx.strokeStyle = col; lx.lineWidth = w; lx.beginPath();
-      lx.moveTo(c - r * 2, c); lx.lineTo(c - r * 0.6, c); lx.moveTo(c + r * 0.6, c); lx.lineTo(c + r * 2, c);
-      lx.moveTo(c, c - r * 2); lx.lineTo(c, c - r * 0.6); lx.moveTo(c, c + r * 0.6); lx.lineTo(c, c + r * 2);
-      lx.stroke();
-    }
-  }
-  function show(clientX, clientY, p) {
-    if (!on) { on = true; size(); el.classList.remove("hidden"); }
-    gx = Math.floor(p.x * fw); gy = Math.floor(p.y * fh);
-    // Above the finger; below it if there's no room; nudged to stay on screen.
-    const vw = innerWidth, gap = 46;
-    let left = clientX - SIZE / 2, top = clientY - SIZE - gap;
-    if (top < 4) top = clientY + gap;
-    left = Math.max(4, Math.min(vw - SIZE - 4, left));
-    el.style.transform = `translate(${left}px, ${top}px)`;
-    redraw();
-  }
-  function hide() { on = false; el.classList.add("hidden"); }
-  return { show, hide, redraw, get on() { return on; } };
-})();
-
 /* ===== Touch to mouse =====
-   Tap: click where you tapped. Swipe: scroll the picture when it's bigger than the screen.
-   Press and hold: the magnifier appears; slide to aim, let go to click.
-   Two fingers: pinch to zoom, drag to move. Right: the next tap or hold is a right click.
-   The game reads the mouse once per frame, so the pointer settles before the press and
-   the press lasts a few frames. */
+   Tap: click where you tapped. One finger drag: a mouse drag (drag players and arrows
+   on the tactics screen). Press and hold: right click, or drag with the right button.
+   Two fingers: drag to scroll, pinch to zoom. Right: the next tap or drag uses the
+   right button. The game reads the mouse once per frame, so the pointer settles before
+   the press and the press lasts a few frames. */
 (function touch() {
   const zone = $("zone");
   const BTN_L = 0, BTN_R = 1;
-  const SETTLE = 90, HOLD = 90, HOLD_MS = 280, SLOP = 9;
-  let start = null, last = null, mode = null, holdTimer = 0, pinch = null, rightNext = false;
-  const move = (x, y) => { if (!ci) return null; power.input(); const p = view.toGame(x, y); ci.sendMouseMotion(p.x, p.y); return p; };
+  const SETTLE = 90, HOLD = 90, HOLD_MS = 550, SLOP = 8;
+  const GRAB = 150;   // the game needs the button held where the drag starts before the pointer moves
+  let start = null, dragging = false, rdrag = false, consumed = false, holdTimer = 0, pinch = null, rightNext = false, dragBtn = BTN_L;
+  let grabbed = null, lastPt = null;   // grabbed: resolves once the button is down and held
+  const move = (x, y) => { if (!ci) return; power.input(); const p = view.toGame(x, y); ci.sendMouseMotion(p.x, p.y); };
   const button = (b, down) => { if (ci) { power.input(); ci.sendMouseButton(b, down); } };
   // If the tap wakes a paused emulator, give the game a moment to start reading the mouse.
   function click(x, y, b) { const woke = power.paused; move(x, y); setTimeout(() => { move(x, y); button(b, true); setTimeout(() => button(b, false), HOLD); }, woke ? 260 : SETTLE); }
@@ -748,16 +707,20 @@ const loupe = (() => {
   $("t-rc").onclick = () => setRight(!rightNext);
   const two = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, d: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)) });
   const opts = { passive: false };
-  function cancel() { clearTimeout(holdTimer); loupe.hide(); start = null; mode = null; }
   zone.addEventListener("touchstart", e => {
     e.preventDefault();
-    if (e.touches.length >= 2) { cancel(); pinch = two(e.touches[0], e.touches[1]); return; }
-    const t = e.changedTouches[0];
-    start = last = { x: t.clientX, y: t.clientY }; mode = "tap";
+    if (e.touches.length >= 2) {
+      clearTimeout(holdTimer); consumed = true;
+      if (dragging) { button(dragBtn, false); dragging = false; } if (rdrag) { button(BTN_R, false); rdrag = false; }
+      pinch = two(e.touches[0], e.touches[1]); return;
+    }
+    const t = e.changedTouches[0]; start = { x: t.clientX, y: t.clientY }; dragging = rdrag = consumed = false; lastPt = null;
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {
-      if (mode !== "tap") return;
-      mode = "aim"; const p = move(last.x, last.y); if (p) loupe.show(last.x, last.y, p);
+      if (!start || dragging || consumed) return;
+      consumed = true; rdrag = true; move(start.x, start.y);
+      setTimeout(() => { if (rdrag) button(BTN_R, true); }, SETTLE);
+      toast("Right button", 900);
     }, HOLD_MS);
   }, opts);
   zone.addEventListener("touchmove", e => {
@@ -768,11 +731,20 @@ const loupe = (() => {
       pinch = now; return;
     }
     if (!start) return;
-    const t = e.changedTouches[0], cur = { x: t.clientX, y: t.clientY };
-    if (mode === "tap" && Math.hypot(cur.x - start.x, cur.y - start.y) > SLOP) { mode = "pan"; clearTimeout(holdTimer); }
-    if (mode === "pan") view.pan(cur.x - last.x, cur.y - last.y);
-    else if (mode === "aim") { const p = move(cur.x, cur.y); if (p) loupe.show(cur.x, cur.y, p); }
-    last = cur;
+    const t = e.changedTouches[0];
+    if (rdrag) { move(t.clientX, t.clientY); return; }
+    if (consumed) return;
+    lastPt = { x: t.clientX, y: t.clientY };
+    if (!dragging && Math.hypot(t.clientX - start.x, t.clientY - start.y) > SLOP) {
+      // Start the drag where the finger first touched: settle there, press, hold a
+      // moment, and only then follow the finger.
+      dragging = true; clearTimeout(holdTimer); dragBtn = rightNext ? BTN_R : BTN_L;
+      const woke = power.paused, from = start, b = dragBtn; move(from.x, from.y);
+      grabbed = new Promise(r => setTimeout(() => { move(from.x, from.y); button(b, true); setTimeout(r, GRAB); }, woke ? 260 : SETTLE))
+        .then(() => { if (lastPt) move(lastPt.x, lastPt.y); });
+      return;
+    }
+    if (dragging) grabbed.then(() => move(t.clientX, t.clientY));
   }, opts);
   const end = e => {
     e.preventDefault();
@@ -780,10 +752,15 @@ const loupe = (() => {
     clearTimeout(holdTimer);
     if (!start) return;
     const t = e.changedTouches[0];
-    if (e.type === "touchend" && (mode === "tap" || mode === "aim")) {
-      click(t.clientX, t.clientY, rightNext ? BTN_R : BTN_L); if (rightNext) setRight(false);
+    if (rdrag) { move(t.clientX, t.clientY); setTimeout(() => button(BTN_R, false), 60); }
+    else if (dragging) {
+      // Let the game see the pointer arrive at the drop point before letting go.
+      const b = dragBtn, x = t.clientX, y = t.clientY;
+      grabbed.then(() => { move(x, y); setTimeout(() => { move(x, y); setTimeout(() => button(b, false), 80); }, SETTLE); });
+      if (rightNext) setRight(false);
     }
-    loupe.hide(); start = null; mode = null;
+    else if (!consumed && e.type === "touchend") { click(t.clientX, t.clientY, rightNext ? BTN_R : BTN_L); if (rightNext) setRight(false); }
+    start = null; dragging = rdrag = false;
   };
   zone.addEventListener("touchend", end, opts);
   zone.addEventListener("touchcancel", end, opts);

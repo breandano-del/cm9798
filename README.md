@@ -14,10 +14,10 @@ A personal project: the original DOS version of CM 97/98 running in Safari throu
 
 ## Controls
 
-- Tap to click. Swipe to scroll when the picture is bigger than the screen.
-- Press and hold: a magnifier appears above your finger. Slide to aim at the cross, let go to click.
-- Wide fills the width of the screen (bigger text, swipe up and down); Fit shows the whole screen. Pinch to zoom; Reset goes back.
-- Right makes your next tap (or hold) a right click.
+- Tap to click. Drag with one finger to drag in the game (players and arrows on the tactics screen).
+- Press and hold for a right click (keep holding and move to drag with the right button).
+- Right makes your next tap or drag use the right button.
+- Two fingers: drag to scroll, pinch to zoom. Wide fills the width of the screen (bigger text); Fit shows the whole screen; Reset undoes a zoom.
 - Keys opens the phone keyboard, plus Esc, Enter, Tab, arrows and Page Up/Down.
 - Keep stores your saves on the device straight away (it also happens on its own every 45 seconds and when you leave). Exit goes back to the home screen.
 
