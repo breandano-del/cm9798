@@ -14,9 +14,10 @@ A personal project: the original DOS version of CM 97/98 running in Safari throu
 
 ## Controls
 
-- Tap to click. Press and hold for a right click.
-- Drag with one finger to drag (left button).
-- Pinch to zoom, two-finger drag to move around. Fit resets the view.
+- Tap to click. Swipe to scroll when the picture is bigger than the screen.
+- Press and hold: a magnifier appears above your finger. Slide to aim at the cross, let go to click.
+- Wide fills the width of the screen (bigger text, swipe up and down); Fit shows the whole screen. Pinch to zoom; Reset goes back.
+- Right makes your next tap (or hold) a right click.
 - Keys opens the phone keyboard, plus Esc, Enter, Tab, arrows and Page Up/Down.
 - Keep stores your saves on the device straight away (it also happens on its own every 45 seconds and when you leave). Exit goes back to the home screen.
 
@@ -28,7 +29,9 @@ Replacing the game (for example with an updated database) keeps your saves and H
 
 On iPhone, the Home Screen app keeps its own storage, separate from Safari. Load your game from the Home Screen icon, not from a Safari tab.
 
-## Speed
+## Speed and battery
+
+The game waits for you in a loop, which would keep a CPU core flat out (and the phone hot) even on a still screen. The app pauses the emulator whenever the screen has been still for a few seconds and the game isn't busy (it shows a football pointer while it's working), and resumes the moment you touch it. It also pauses when the app is in the background. Processing runs at full speed.
 
 The emulator runs flat out, which on a recent phone is faster than the PCs the game was made for. Creating a new game still takes a few minutes, as it did in 1997.
 

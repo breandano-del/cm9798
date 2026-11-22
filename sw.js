@@ -1,6 +1,6 @@
 // Keeps the app (page + emulator) on the device so it plays with no connection.
 // The game itself is never fetched: it lives in IndexedDB after you load your zip.
-const CACHE = "cm9798-v1";
+const CACHE = "cm9798-v2";
 const FILES = [
   "./", "index.html", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
@@ -10,7 +10,7 @@ const FILES = [
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
@@ -19,8 +19,16 @@ self.addEventListener("activate", e => {
     .then(() => self.clients.claim()));
 });
 
-// Cache first, so it starts instantly and works offline. Bump CACHE to ship an update.
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
-  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request)));
+  const req = e.request;
+  if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
+  // The page: network first (so an update shows on the next launch), cached copy offline.
+  if (req.mode === "navigate") {
+    e.respondWith(fetch(req, { cache: "no-cache" })
+      .then(res => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); } return res; })
+      .catch(() => caches.match("index.html")));
+    return;
+  }
+  // Everything else (emulator, icons): cache first. Bump CACHE to ship a new emulator.
+  e.respondWith(caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req)));
 });

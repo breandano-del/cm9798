@@ -48,7 +48,7 @@ ol.steps li { margin: 3px 0; }
 #stage { position: fixed; inset: 0; background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
 #zone { position: absolute; top: 0; bottom: 0; left: env(safe-area-inset-left, 0px); right: max(58px, env(safe-area-inset-right, 0px)); overflow: hidden; touch-action: none; }
 #screen { position: absolute; left: 0; top: 0; width: 640px; height: 480px; transform-origin: 0 0; image-rendering: auto; background: #000; }
-#screen.crisp { image-rendering: pixelated; }
+#loupe { position: absolute; left: 0; top: 0; width: 132px; height: 132px; border-radius: 50%; border: 3px solid #f5e04a; box-shadow: 0 6px 22px rgba(0,0,0,.6); z-index: 15; pointer-events: none; background: #000; }
 #tools { position: absolute; top: 0; bottom: 0; right: 0; width: max(58px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); background: #050805; border-left: 1px solid #142a16; }
 #tools button { appearance: none; width: 50px; min-height: 46px; border: 1px solid #1f4a24; background: #0c2410; font-size: 11px; font-weight: 600; letter-spacing: .02em; display: grid; place-items: center; gap: 1px; padding: 4px 2px; cursor: pointer; }
 #tools button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -120,8 +120,10 @@ ol.steps li { margin: 3px 0; }
     <section class="card">
       <h2>Playing</h2>
       <ol class="steps">
-        <li>Landscape is best. Tap to click.</li>
-        <li>Pinch to zoom, drag with two fingers to move around. Fit puts it back.</li>
+        <li>Landscape is best. Tap to click. Swipe to scroll.</li>
+        <li>Press and hold to bring up a magnifier, slide to aim, let go to click.</li>
+        <li>Wide fills the screen width (bigger text), Fit shows the whole screen. Pinch to zoom.</li>
+        <li>Right makes your next tap a right click.</li>
         <li>Keys opens the keyboard for names and searches.</li>
         <li>Save in the game as usual, then Exit to come back here.</li>
       </ol>
@@ -146,6 +148,7 @@ ol.steps li { margin: 3px 0; }
     <button data-k="265">↑</button><button data-k="264">↓</button><button data-k="266">PgUp</button><button data-k="267">PgDn</button>
   </div>
   <input id="kbd" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <canvas id="loupe" class="hidden"></canvas>
   <div id="toast"></div>
 </div>
 
@@ -285,9 +288,8 @@ $("s-wipe").onclick = async () => {
 
 /* ===== The emulator ===== */
 emulators.pathPrefix = "vendor/emu/";
-let ci = null, running = false, frame = null, fw = 640, fh = 480, dirty = false;
+let frameSeq = 0, ci = null, running = false, frame = null, fw = 640, fh = 480, dirty = false;
 const cv = $("screen"), cx = cv.getContext("2d", { alpha: false });
-let img = cx.createImageData(640, 480);
 
 function dosboxConf(cmd) {
   return `[sdl]
@@ -323,16 +325,95 @@ echo CM9798-QUIT
 `;
 }
 
+// The game's 640x480 frame goes into an offscreen canvas. The visible canvas holds it
+// enlarged by a whole number (sharp, even pixels), and the browser smooths the last
+// small step to the screen. Small text stays crisp at any size.
+const src = document.createElement("canvas"); src.width = 640; src.height = 480;
+const sx = src.getContext("2d", { alpha: false });
+let img = sx.createImageData(640, 480), prescale = 1;
+function blit() { cx.imageSmoothingEnabled = false; cx.drawImage(src, 0, 0, cv.width, cv.height); }
+function setPrescale(k) {
+  if (k === prescale && cv.width === fw * k && cv.height === fh * k) return;
+  prescale = k; cv.width = fw * k; cv.height = fh * k; blit();
+}
+// Draw only when the emulator sends a changed screen, not 60 times a second.
+let rafPending = false;
 function draw() {
+  rafPending = false;
   if (!running) return;
   if (dirty && frame) {
     const d = img.data, n = fw * fh;
     if (frame.length === n * 4) d.set(frame);
     else for (let i = 0, j = 0; j < n * 4; i += 3, j += 4) { d[j] = frame[i]; d[j + 1] = frame[i + 1]; d[j + 2] = frame[i + 2]; d[j + 3] = 255; }
-    cx.putImageData(img, 0, 0); dirty = false;
+    sx.putImageData(img, 0, 0); dirty = false; blit(); loupe.redraw();
   }
-  requestAnimationFrame(draw);
 }
+const wantDraw = () => { if (!rafPending) { rafPending = true; requestAnimationFrame(draw); } };
+
+/* ===== Power =====
+   CM sits in a loop waiting for the mouse, and DOSBox runs that loop flat out, so an
+   idle menu burns a whole CPU core (and heats the phone). The emulator only sends a
+   frame when the screen changes, so: when the screen has been still and nothing has
+   been touched for a few seconds, pause it. Any touch or key resumes it at once.
+   While paused it wakes briefly every few seconds; if the game is quietly working on
+   something and the screen moves, it stays awake. In the background it stays paused. */
+/* The game draws its own pointer: an arrow when it's waiting for you, a football while
+   it's busy (loading, processing). If the football is anywhere on a still screen, the
+   game is working: leave it running. Template: x, y, grey level, from the game's sprite. */
+const BUSY = (() => {
+  const T = [2,0,73,3,0,73,4,0,150,5,0,203,6,0,150,7,0,73,1,1,101,3,1,150,4,1,255,5,1,255,6,1,255,7,1,203,8,1,101,0,2,73,1,2,0,2,2,0,3,2,203,4,2,255,5,2,255,6,2,255,7,2,203,8,2,0,9,2,73,0,3,150,1,3,0,2,3,0,3,3,203,4,3,255,5,3,255,6,3,255,7,3,203,8,3,0,9,3,0,0,4,203,1,4,255,2,4,255,3,4,255,4,4,101,5,4,0,6,4,101,7,4,255,8,4,255,9,4,203,10,4,73,0,5,150,1,5,255,2,5,255,3,5,203,4,5,0,5,5,0,6,5,0,7,5,203,8,5,255,9,5,203,10,5,73,0,6,73,1,6,203,2,6,255,3,6,101,4,6,0,5,6,0,6,6,0,7,6,101,8,6,203,9,6,150,1,7,150,2,7,203,3,7,255,4,7,203,5,7,0,6,7,203,7,7,203,8,7,203,9,7,73,0,8,73,1,8,0,2,8,0,3,8,101,4,8,203,5,8,203,6,8,203,7,8,150,8,8,0,3,9,73,4,9,101,5,9,150,6,9,101,7,9,73,2,10,73,4,10,73,5,10,73,6,10,73];
+  let seq = -1, cached = false;
+  function find() {
+    const st = frame.length === fw * fh * 4 ? 4 : 3, f = frame;
+    // Anchor on the grey at (5,0), then check the rest; most candidates fail on the first few.
+    for (let y = 0; y <= fh - 11; y++) {
+      for (let x = 5; x <= fw - 6; x++) {
+        const i = (y * fw + x) * st;
+        if (f[i] !== 203 || f[i + 1] !== 203 || f[i + 2] !== 203) continue;
+        const ox = x - 5; let ok = true;
+        for (let k = 0; k < T.length; k += 3) {
+          const j = ((y + T[k + 1]) * fw + ox + T[k]) * st, g = T[k + 2];
+          if (f[j] !== g || f[j + 1] !== g || f[j + 2] !== g) { ok = false; break; }
+        }
+        if (ok) return true;
+      }
+    }
+    return false;
+  }
+  return { now() { if (!frame) return false; if (seq !== frameSeq) { seq = frameSeq; cached = find(); } return cached; } };
+})();
+
+const power = (() => {
+  const IDLE_MS = 4000, PEEK_EVERY = 5000, PEEK_MS = 300;
+  let lastFrame = 0, lastInput = 0, paused = false, hidden = false, timer = 0, peekTimer = 0;
+  const now = () => performance.now();
+  function pause() { if (ci && !paused) { ci.pause(); paused = true; } }
+  function resume() { if (ci && paused) { ci.resume(); paused = false; } }
+  function peekLater() {
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => {
+      if (!paused || hidden || !ci) return;
+      const seen = lastFrame; resume();
+      setTimeout(() => {
+        if (!hidden && lastFrame === seen && now() - lastInput > IDLE_MS && !BUSY.now()) { pause(); peekLater(); }
+      }, PEEK_MS);
+    }, PEEK_EVERY);
+  }
+  function tick() {
+    if (!ci || hidden || paused) return;
+    const t = now();
+    if (t - lastFrame > IDLE_MS && t - lastInput > IDLE_MS && !BUSY.now()) { pause(); peekLater(); }
+  }
+  return {
+    start() { lastFrame = lastInput = now(); paused = hidden = false; clearInterval(timer); timer = setInterval(tick, 500); },
+    stop() { clearInterval(timer); clearTimeout(peekTimer); if (paused && ci) { try { ci.resume(); } catch (e) {} } paused = false; },
+    frame() { lastFrame = now(); },
+    input() { lastInput = now(); if (paused && !hidden) resume(); },
+    hide() { hidden = true; clearTimeout(peekTimer); pause(); },
+    show() { hidden = false; lastInput = now(); resume(); },
+    get paused() { return paused; },
+  };
+})();
 
 async function start(which) {
   const game = await db.get("game");
@@ -347,10 +428,10 @@ async function start(which) {
   try {
     ci = await emulators.dosboxWorker(init);
   } catch (e) { alert("The emulator couldn't start: " + e); backHome(); return; }
-  window.ci = ci; running = true; requestAnimationFrame(draw);
+  window.ci = ci; running = true; power.start();
   const ev = ci.events();
-  ev.onFrameSize((w, h) => { fw = w; fh = h; cv.width = w; cv.height = h; img = cx.createImageData(w, h); view.relayout(); say("size", w, h); });
-  ev.onFrame((rgb, rgba) => { frame = rgba || rgb; dirty = true; $("boot").classList.add("hidden"); });
+  ev.onFrameSize((w, h) => { fw = w; fh = h; src.width = w; src.height = h; img = sx.createImageData(w, h); prescale = 0; view.relayout(); say("size", w, h); });
+  ev.onFrame((rgb, rgba) => { frame = rgba || rgb; frameSeq++; dirty = true; power.frame(); wantDraw(); $("boot").classList.add("hidden"); });
   // When the game quits back to DOS, the startup script prints a marker: keep the saves
   // and go back to the home screen.
   ev.onStdout(m => { say("out", m.trim()); if (/^CM9798-QUIT/m.test(m) && running) finish(); });
@@ -409,14 +490,18 @@ const autosave = (() => {
     run,
   };
 })();
-document.addEventListener("visibilitychange", () => { if (document.hidden && running) autosave.run("hidden"); });
+document.addEventListener("visibilitychange", async () => {
+  if (!running) return;
+  if (document.hidden) { await autosave.run("hidden"); if (document.hidden) power.hide(); }
+  else power.show();
+});
 window.addEventListener("pagehide", () => { if (running) autosave.run("pagehide"); });
 
 async function finish() {
   if (!ci) return backHome();
   toast("Keeping your saves…", 5000);
   await autosave.run("exit");
-  autosave.stop(); running = false;
+  autosave.stop(); power.stop(); running = false;
   try { await ci.exit(); } catch (e) {}
   ci = null; window.ci = null;
   backHome();
@@ -434,10 +519,12 @@ $("t-save").onclick = async () => { toast("Keeping your saves…"); const did = 
 let toastTimer = 0;
 function toast(msg, ms = 2200) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), ms); }
 
-/* ===== View: fit, pinch zoom, pan ===== */
+/* ===== View: fit or fill the width, pinch zoom, pan =====
+   Fit shows the whole screen. Wide fills the width (bigger text) and you swipe to scroll. */
 const view = (() => {
   const zone = $("zone");
-  let fit = 1, s = 1, ox = 0, oy = 0;
+  let mode = "fill"; try { mode = localStorage.getItem("cm-view") || "fill"; } catch (e) {}
+  let fit = 1, base = 1, s = 1, ox = 0, oy = 0;
   function clamp() {
     const zw = zone.clientWidth, zh = zone.clientHeight, w = fw * s, h = fh * s;
     ox = w <= zw ? (zw - w) / 2 : Math.min(0, Math.max(zw - w, ox));
@@ -447,17 +534,28 @@ const view = (() => {
     clamp();
     cv.style.width = fw + "px"; cv.style.height = fh + "px";
     cv.style.transform = `translate(${ox}px, ${oy}px) scale(${s})`;
-    cv.classList.toggle("crisp", s * devicePixelRatio >= 1.95);
+    setPrescale(Math.max(1, Math.min(4, Math.floor(s * devicePixelRatio))));
+    label();
+  }
+  // The button says what it will do: Reset (after zooming), or switch Wide / Fit.
+  // Hidden when there's nothing to switch (e.g. portrait, where both are the same).
+  function label() {
+    const b = $("t-fit"), canWide = (zone.clientWidth / fw) > fit * 1.02, zoomed = Math.abs(s - base) > 0.01;
+    b.classList.toggle("hidden", !zoomed && !canWide);
+    b.lastChild.textContent = zoomed ? "Reset" : (mode === "fill" ? "Fit" : "Wide");
   }
   function relayout() {
     const zw = zone.clientWidth, zh = zone.clientHeight; if (!zw || !zh) return;
-    const was = s === fit; fit = Math.min(zw / fw, zh / fh);
-    if (was || s < fit) s = fit;
+    const atBase = Math.abs(s - base) < 0.001;
+    fit = Math.min(zw / fw, zh / fh);
+    base = mode === "fill" ? Math.max(fit, zw / fw) : fit;
+    if (atBase || s < fit) { s = base; oy = 0; }
     apply();
   }
+  function setMode(m) { mode = m; try { localStorage.setItem("cm-view", m); } catch (e) {} s = -1; base = -1; relayout(); s = base; oy = 0; apply(); }
   function zoomAt(ns, x, y) {
     const r = zone.getBoundingClientRect(); x -= r.left; y -= r.top;
-    ns = Math.max(fit, Math.min(fit * 4, ns));
+    ns = Math.max(fit, Math.min(fit * 5, ns));
     ox = x - (x - ox) * ns / s; oy = y - (y - oy) * ns / s; s = ns; apply();
   }
   function pan(dx, dy) { ox += dx; oy += dy; apply(); }
@@ -467,55 +565,97 @@ const view = (() => {
   }
   new ResizeObserver(relayout).observe(zone);
   window.addEventListener("orientationchange", () => setTimeout(relayout, 300));
-  $("t-fit").onclick = () => { s = fit; apply(); };
+  $("t-fit").onclick = () => {
+    if (Math.abs(s - base) > 0.01) { s = base; oy = 0; apply(); return; }
+    setMode(mode === "fill" ? "fit" : "fill");
+  };
   return { relayout, zoomAt, pan, toGame, get scale() { return s; } };
 })();
 
+/* ===== Magnifier =====
+   While you hold a finger down, a bubble above it shows what's underneath, enlarged,
+   with a cross on the exact spot that will be clicked. */
+const loupe = (() => {
+  const el = $("loupe"), lx = el.getContext("2d");
+  const SIZE = 132, SPAN = 44;            // CSS px on screen; game px shown across it
+  let on = false, gx = 0, gy = 0;
+  function size() { const d = devicePixelRatio || 1; el.width = el.height = Math.round(SIZE * d); }
+  function redraw() {
+    if (!on) return;
+    const W = el.width, k = W / SPAN;
+    lx.imageSmoothingEnabled = false;
+    lx.fillStyle = "#000"; lx.fillRect(0, 0, W, W);
+    const x0 = gx - SPAN / 2, y0 = gy - SPAN / 2;
+    lx.drawImage(src, x0, y0, SPAN, SPAN, 0, 0, W, W);
+    // Cross on the hot spot (pixel centre).
+    const c = (SPAN / 2 + 0.5) * k, r = 7 * (W / SIZE);
+    lx.lineWidth = Math.max(1.5, W / SIZE * 1.5);
+    for (const [col, w] of [["#000", lx.lineWidth + 2 * (W / SIZE)], ["#f5e04a", lx.lineWidth]]) {
+      lx.strokeStyle = col; lx.lineWidth = w; lx.beginPath();
+      lx.moveTo(c - r * 2, c); lx.lineTo(c - r * 0.6, c); lx.moveTo(c + r * 0.6, c); lx.lineTo(c + r * 2, c);
+      lx.moveTo(c, c - r * 2); lx.lineTo(c, c - r * 0.6); lx.moveTo(c, c + r * 0.6); lx.lineTo(c, c + r * 2);
+      lx.stroke();
+    }
+  }
+  function show(clientX, clientY, p) {
+    if (!on) { on = true; size(); el.classList.remove("hidden"); }
+    gx = Math.floor(p.x * fw); gy = Math.floor(p.y * fh);
+    // Above the finger; below it if there's no room; nudged to stay on screen.
+    const vw = innerWidth, gap = 46;
+    let left = clientX - SIZE / 2, top = clientY - SIZE - gap;
+    if (top < 4) top = clientY + gap;
+    left = Math.max(4, Math.min(vw - SIZE - 4, left));
+    el.style.transform = `translate(${left}px, ${top}px)`;
+    redraw();
+  }
+  function hide() { on = false; el.classList.add("hidden"); }
+  return { show, hide, redraw, get on() { return on; } };
+})();
+
 /* ===== Touch to mouse =====
-   Tap: left click where you tapped. Press and hold: right click (or drag with the right
-   button held). One finger drag: left-button drag. Two fingers: pinch to zoom, drag to move.
+   Tap: click where you tapped. Swipe: scroll the picture when it's bigger than the screen.
+   Press and hold: the magnifier appears; slide to aim, let go to click.
+   Two fingers: pinch to zoom, drag to move. Right: the next tap or hold is a right click.
    The game reads the mouse once per frame, so the pointer settles before the press and
    the press lasts a few frames. */
 (function touch() {
   const zone = $("zone");
   const BTN_L = 0, BTN_R = 1;
-  const SETTLE = 90, HOLD = 90;
-  let start = null, dragging = false, rdrag = false, consumed = false, holdTimer = 0, pinch = null, rightNext = false;
-  const move = (x, y) => { if (!ci) return; const p = view.toGame(x, y); ci.sendMouseMotion(p.x, p.y); };
-  const button = (b, down) => { if (ci) ci.sendMouseButton(b, down); };
-  function click(x, y, b) { move(x, y); setTimeout(() => { move(x, y); button(b, true); setTimeout(() => button(b, false), HOLD); }, SETTLE); }
+  const SETTLE = 90, HOLD = 90, HOLD_MS = 280, SLOP = 9;
+  let start = null, last = null, mode = null, holdTimer = 0, pinch = null, rightNext = false;
+  const move = (x, y) => { if (!ci) return null; power.input(); const p = view.toGame(x, y); ci.sendMouseMotion(p.x, p.y); return p; };
+  const button = (b, down) => { if (ci) { power.input(); ci.sendMouseButton(b, down); } };
+  // If the tap wakes a paused emulator, give the game a moment to start reading the mouse.
+  function click(x, y, b) { const woke = power.paused; move(x, y); setTimeout(() => { move(x, y); button(b, true); setTimeout(() => button(b, false), HOLD); }, woke ? 260 : SETTLE); }
   const setRight = v => { rightNext = v; $("t-rc").setAttribute("aria-pressed", String(v)); };
   $("t-rc").onclick = () => setRight(!rightNext);
   const two = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, d: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)) });
   const opts = { passive: false };
+  function cancel() { clearTimeout(holdTimer); loupe.hide(); start = null; mode = null; }
   zone.addEventListener("touchstart", e => {
     e.preventDefault();
-    if (e.touches.length === 2) {
-      clearTimeout(holdTimer); consumed = true;
-      if (dragging) { button(BTN_L, false); dragging = false; } if (rdrag) { button(BTN_R, false); rdrag = false; }
-      pinch = two(e.touches[0], e.touches[1]); return;
-    }
-    if (e.touches.length > 2) return;
-    const t = e.changedTouches[0]; start = { x: t.clientX, y: t.clientY }; dragging = rdrag = consumed = false;
-    move(t.clientX, t.clientY);
+    if (e.touches.length >= 2) { cancel(); pinch = two(e.touches[0], e.touches[1]); return; }
+    const t = e.changedTouches[0];
+    start = last = { x: t.clientX, y: t.clientY }; mode = "tap";
     clearTimeout(holdTimer);
-    holdTimer = setTimeout(() => { if (start && !dragging && !consumed) { consumed = true; rdrag = true; move(start.x, start.y); button(BTN_R, true); toast("Right button", 900); } }, 600);
+    holdTimer = setTimeout(() => {
+      if (mode !== "tap") return;
+      mode = "aim"; const p = move(last.x, last.y); if (p) loupe.show(last.x, last.y, p);
+    }, HOLD_MS);
   }, opts);
   zone.addEventListener("touchmove", e => {
     e.preventDefault();
-    if (e.touches.length === 2 && pinch) {
+    if (e.touches.length >= 2 && pinch) {
       const now = two(e.touches[0], e.touches[1]);
       view.zoomAt(view.scale * now.d / pinch.d, now.x, now.y); view.pan(now.x - pinch.x, now.y - pinch.y);
       pinch = now; return;
     }
     if (!start) return;
-    const t = e.changedTouches[0];
-    if (rdrag) { move(t.clientX, t.clientY); return; }
-    if (consumed) return;
-    if (!dragging && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) {
-      dragging = true; clearTimeout(holdTimer); move(start.x, start.y); button(rightNext ? BTN_R : BTN_L, true);
-    }
-    if (dragging) move(t.clientX, t.clientY);
+    const t = e.changedTouches[0], cur = { x: t.clientX, y: t.clientY };
+    if (mode === "tap" && Math.hypot(cur.x - start.x, cur.y - start.y) > SLOP) { mode = "pan"; clearTimeout(holdTimer); }
+    if (mode === "pan") view.pan(cur.x - last.x, cur.y - last.y);
+    else if (mode === "aim") { const p = move(cur.x, cur.y); if (p) loupe.show(cur.x, cur.y, p); }
+    last = cur;
   }, opts);
   const end = e => {
     e.preventDefault();
@@ -523,10 +663,10 @@ const view = (() => {
     clearTimeout(holdTimer);
     if (!start) return;
     const t = e.changedTouches[0];
-    if (rdrag) button(BTN_R, false);
-    else if (dragging) { move(t.clientX, t.clientY); button(rightNext ? BTN_R : BTN_L, false); if (rightNext) setRight(false); }
-    else if (!consumed) { click(t.clientX, t.clientY, rightNext ? BTN_R : BTN_L); if (rightNext) setRight(false); }
-    start = null; dragging = rdrag = false;
+    if (e.type === "touchend" && (mode === "tap" || mode === "aim")) {
+      click(t.clientX, t.clientY, rightNext ? BTN_R : BTN_L); if (rightNext) setRight(false);
+    }
+    loupe.hide(); start = null; mode = null;
   };
   zone.addEventListener("touchend", end, opts);
   zone.addEventListener("touchcancel", end, opts);
@@ -552,6 +692,7 @@ const view = (() => {
   function press(code, shift) {
     chain = chain.then(async () => {
       if (!ci) return;
+      const woke = power.paused; power.input(); if (woke) await later(220);
       if (shift) { ci.sendKeyEvent(340, true); await later(30); }
       ci.sendKeyEvent(code, true); await later(40); ci.sendKeyEvent(code, false); await later(30);
       if (shift) { ci.sendKeyEvent(340, false); await later(20); }
