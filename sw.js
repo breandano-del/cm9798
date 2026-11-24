@@ -1,6 +1,6 @@
 // Keeps the app (page + emulator) on the device so it plays with no connection.
 // The game itself is never fetched: it lives in IndexedDB after you load your zip.
-const CACHE = "cm9798-v5";
+const CACHE = "cm9798-v6";
 const FILES = [
   "./", "index.html", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",

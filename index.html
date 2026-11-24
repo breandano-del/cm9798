@@ -132,6 +132,7 @@ ol.steps li { margin: 3px 0; }
         <li>Press and hold for a right click. Right makes your next tap or drag use the right button.</li>
         <li>Scroll with two fingers, pinch to zoom. Wide fills the screen width (bigger text), Fit shows the whole screen.</li>
         <li>Keys opens the keyboard for names and searches.</li>
+        <li>Matches play fast automatically (the app presses Space at each kick-off). Switch it off in the menu to watch at normal speed.</li>
         <li>The round button over the game has the tools (keyboard, right click, Fit/Wide, Keep, Exit). Drag it out of the way if it covers something.</li>
         <li>Save in the game as usual, then Exit to come back here.</li>
       </ol>
@@ -150,6 +151,7 @@ ol.steps li { margin: 3px 0; }
     <button type="button" id="t-kbd"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="1.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>Keys</button>
     <button type="button" id="t-rc" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v7M12 10h6"/></svg>Right</button>
     <button type="button" id="t-fit"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
+    <button type="button" id="t-fast" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 6l7 6-7 6zM13 6l7 6-7 6z"/></svg><span>Fast matches</span></button>
     <button type="button" id="t-save"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>Keep</button>
     <button type="button" id="t-exit"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/></svg>Exit</button>
   </div>
@@ -500,6 +502,56 @@ const BUSY = (() => {
   return { now() { if (!frame) return false; if (seq !== frameSeq) { seq = frameSeq; cached = find(); } return cached; } };
 })();
 
+/* ===== Match screen =====
+   Recognised by its fixed pieces: the white score boxes and the grey possession bar.
+   While a match is on, the game is never paused (commentary can hold still for a few
+   seconds), and if "fast matches" is on, Space is pressed once the clock starts. */
+const MATCH = (() => {
+  const px = (x, y) => { const st = frame.length === fw * fh * 4 ? 4 : 3, i = (y * fw + x) * st; return [frame[i], frame[i + 1], frame[i + 2]]; };
+  const is = (x, y, c) => { const p = px(x, y); return p[0] === c[0] && p[1] === c[1] && p[2] === c[2]; };
+  let seq = -1, on = false, live = false;
+  function look() {
+    if (seq === frameSeq) return; seq = frameSeq;
+    on = !!frame && fw === 640 && fh === 480 && is(269, 10, [255, 255, 255]) && is(300, 12, [255, 255, 255]) && is(314, 48, [203, 203, 203]) && is(633, 48, [203, 203, 203]) && is(12, 418, [101, 101, 101]) && is(320, 415, [150, 150, 150]);
+    live = false;
+    if (on) for (let y = 60; y < 82 && !live; y += 2) for (let x = 296; x < 344; x += 2) if (is(x, y, [255, 255, 36])) { live = true; break; }
+  }
+  return { get on() { look(); return on; }, get live() { look(); return live; } };
+})();
+
+const fastMatch = (() => {
+  let enabled = true; try { enabled = localStorage.getItem("cm-fast") !== "0"; } catch (e) {}
+  let pressed = false, offSince = 0, timer = 0;
+  // The game goes back to normal speed at each kick-off (both halves, extra time). A
+  // half is "live" once the yellow clock shows; between halves the clock goes and a
+  // Kick Off button appears. So: press Space once per live stretch, and re-arm whenever
+  // the clock has gone (half-time, full time) or the match screen has gone.
+  function tick() {
+    if (!ci || !running) return;
+    const now = performance.now();
+    if (MATCH.on && MATCH.live) {
+      offSince = 0;
+      if (enabled && !pressed) { pressed = true; setTimeout(() => { if (ci) { cmKey(32); toast("Fast match", 1200); say("fast match"); } }, 400); }
+    } else {
+      if (!offSince) offSince = now;
+      if (pressed && now - offSince > 1200) pressed = false;
+    }
+  }
+  return {
+    start() { pressed = false; offSince = 0; clearInterval(timer); timer = setInterval(tick, 300); },
+    stop() { clearInterval(timer); },
+    get enabled() { return enabled; },
+    set enabled(v) { enabled = v; try { localStorage.setItem("cm-fast", v ? "1" : "0"); } catch (e) {} },
+  };
+})();
+
+(function fastButton() {
+  const b = $("t-fast");
+  const show = () => { b.setAttribute("aria-pressed", String(fastMatch.enabled)); b.lastChild.textContent = fastMatch.enabled ? "Fast matches: on" : "Fast matches: off"; };
+  b.onclick = () => { fastMatch.enabled = !fastMatch.enabled; show(); toast(fastMatch.enabled ? "Matches will play fast" : "Matches will play at normal speed"); };
+  show();
+})();
+
 const power = (() => {
   const IDLE_MS = 4000, PEEK_EVERY = 5000, PEEK_MS = 300;
   let lastFrame = 0, lastInput = 0, paused = false, hidden = false, timer = 0, peekTimer = 0;
@@ -512,14 +564,14 @@ const power = (() => {
       if (!paused || hidden || !ci) return;
       const seen = lastFrame; resume();
       setTimeout(() => {
-        if (!hidden && lastFrame === seen && now() - lastInput > IDLE_MS && !BUSY.now()) { pause(); peekLater(); }
+        if (!hidden && lastFrame === seen && now() - lastInput > IDLE_MS && !BUSY.now() && !MATCH.on) { pause(); peekLater(); }
       }, PEEK_MS);
     }, PEEK_EVERY);
   }
   function tick() {
     if (!ci || hidden || paused) return;
     const t = now();
-    if (t - lastFrame > IDLE_MS && t - lastInput > IDLE_MS && !BUSY.now()) { pause(); peekLater(); }
+    if (t - lastFrame > IDLE_MS && t - lastInput > IDLE_MS && !BUSY.now() && !MATCH.on) { pause(); peekLater(); }
   }
   return {
     start() { lastFrame = lastInput = now(); paused = hidden = false; clearInterval(timer); timer = setInterval(tick, 500); },
@@ -546,7 +598,7 @@ async function start(which) {
   try {
     ci = await emulators.dosboxWorker(init);
   } catch (e) { alert("The emulator couldn't start: " + e); backHome(); return; }
-  window.ci = ci; running = true; power.start();
+  window.ci = ci; running = true; power.start(); fastMatch.start();
   const ev = ci.events();
   ev.onFrameSize((w, h) => { fw = w; fh = h; src.width = w; src.height = h; img = sx.createImageData(w, h); prescale = 0; view.relayout(); say("size", w, h); });
   ev.onFrame((rgb, rgba) => { frame = rgba || rgb; frameSeq++; dirty = true; power.frame(); wantDraw(); $("boot").classList.add("hidden"); });
@@ -620,7 +672,7 @@ async function finish() {
   if (!ci) return backHome();
   toast("Keeping your saves…", 5000);
   await autosave.run("exit");
-  autosave.stop(); power.stop(); running = false;
+  autosave.stop(); power.stop(); fastMatch.stop(); running = false;
   try { await ci.exit(); } catch (e) {}
   ci = null; window.ci = null;
   backHome();
