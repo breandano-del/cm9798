@@ -46,25 +46,27 @@ ol.steps li { margin: 3px 0; }
 
 /* ===== Stage ===== */
 #stage { position: fixed; inset: 0; background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
-#zone { position: absolute; top: 0; bottom: 0; left: env(safe-area-inset-left, 0px); right: max(58px, env(safe-area-inset-right, 0px)); overflow: hidden; touch-action: none; }
+#zone { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+/* Reads the notch / home-bar insets for the layout code. */
+#insets { position: fixed; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+/* The floating button and its menu (they replace the side rail). */
+#fab { position: absolute; z-index: 12; left: 0; top: 0; width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(245,224,74,.55); background: rgba(10,34,14,.6); color: var(--ink); display: grid; place-items: center; padding: 0; opacity: .4; transition: opacity .3s, box-shadow .2s; touch-action: none; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+#fab.awake { opacity: 1; }
+#fab.armed { opacity: 1; box-shadow: 0 0 0 3px #f5e04a; }
+#fab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #screen { position: absolute; left: 0; top: 0; width: 640px; height: 480px; transform-origin: 0 0; image-rendering: auto; background: #000; }
-#tools { position: absolute; top: 0; bottom: 0; right: 0; width: max(58px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); background: #050805; border-left: 1px solid #142a16; }
-#tools button { appearance: none; width: 50px; min-height: 46px; border: 1px solid #1f4a24; background: #0c2410; font-size: 11px; font-weight: 600; letter-spacing: .02em; display: grid; place-items: center; gap: 1px; padding: 4px 2px; cursor: pointer; }
+#tools { position: absolute; z-index: 13; left: 0; top: 0; display: flex; flex-direction: column; gap: 5px; padding: 6px; background: rgba(5,8,5,.94); border: 1px solid #1f4a24; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+#tools button { appearance: none; min-width: 112px; min-height: 40px; border: 1px solid #1f4a24; background: #0c2410; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; padding: 6px 12px; cursor: pointer; text-align: left; }
 #tools button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 #tools button[aria-pressed="true"] { background: var(--yellow); color: #102; border-color: var(--yellow); }
 /* Portrait: the rail moves under the game. */
-@media (orientation: portrait) {
-  #zone { right: env(safe-area-inset-right, 0px); bottom: calc(64px + env(safe-area-inset-bottom, 0px)); top: env(safe-area-inset-top, 0px); }
-  #tools { top: auto; left: 0; width: auto; height: calc(64px + env(safe-area-inset-bottom, 0px)); flex-direction: row; border-left: 0; border-top: 1px solid #142a16; padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
-  #tools button { width: 54px; }
-}
+
 #boot { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 14px; pointer-events: none; }
 #toast { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 10px); transform: translateX(-50%); background: rgba(10, 40, 14, .95); border: 1px solid #2c8a37; padding: 8px 14px; font-size: 14px; z-index: 20; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
 #toast.on { opacity: 1; }
 #kbd { position: absolute; left: 0; bottom: 0; width: 2px; height: 2px; opacity: 0; font-size: 16px; border: 0; padding: 0; pointer-events: none; }
-#keys { position: absolute; z-index: 10; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); display: flex; gap: 6px; background: rgba(5, 8, 5, .9); border: 1px solid #1f4a24; padding: 6px; }
+#keys { position: absolute; z-index: 10; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); display: flex; gap: 6px; background: rgba(5, 8, 5, .9); border: 1px solid #1f4a24; padding: 6px; }
 #keys button { appearance: none; border: 1px solid #1f4a24; background: #0c2410; padding: 8px 10px; font-size: 13px; font-weight: 600; min-width: 44px; }
-@media (orientation: landscape) { #keys { bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); } }
 </style>
 </head>
 <body>
@@ -130,6 +132,7 @@ ol.steps li { margin: 3px 0; }
         <li>Press and hold for a right click. Right makes your next tap or drag use the right button.</li>
         <li>Scroll with two fingers, pinch to zoom. Wide fills the screen width (bigger text), Fit shows the whole screen.</li>
         <li>Keys opens the keyboard for names and searches.</li>
+        <li>The round button over the game has the tools (keyboard, right click, Fit/Wide, Keep, Exit). Drag it out of the way if it covers something.</li>
         <li>Save in the game as usual, then Exit to come back here.</li>
       </ol>
     </section>
@@ -141,7 +144,9 @@ ol.steps li { margin: 3px 0; }
 <!-- ===== Game ===== -->
 <div id="stage" class="hidden">
   <div id="zone"><canvas id="screen" width="640" height="480"></canvas><div id="boot">Starting…</div></div>
-  <div id="tools">
+  <div id="insets"></div>
+  <button type="button" id="fab" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+  <div id="tools" class="hidden">
     <button type="button" id="t-kbd"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="1.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>Keys</button>
     <button type="button" id="t-rc" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v7M12 10h6"/></svg>Right</button>
     <button type="button" id="t-fit"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fit</button>
@@ -534,7 +539,7 @@ async function start(which) {
   const saves = await store.zip();
   $("home").classList.add("hidden"); $("stage").classList.remove("hidden");
   $("boot").textContent = "Starting…"; $("boot").classList.remove("hidden");
-  view.relayout();
+  view.relayout(); menu.place(); menu.wake();
   const cmd = which === "editor" ? "CM2ED.EXE" : (meta.game.exe || "CM2E16.EXE");
   const init = [game]; if (saves) init.push(saves);
   init.push({ dosboxConf: dosboxConf(cmd), jsdosConf: { version: "8" } });
@@ -639,10 +644,28 @@ const view = (() => {
   const zone = $("zone");
   let mode = "fill"; try { mode = localStorage.getItem("cm-view") || "fill"; } catch (e) {}
   let fit = 1, base = 1, s = 1, ox = 0, oy = 0;
+  /* The game uses the whole screen, but keeps clear of the camera cut-out. In landscape
+     only one side has the camera, so only that side is avoided; the other side and the
+     top and bottom are used to the edge. A zoomed picture can still be moved under it. */
+  let A = { l: 0, r: 0, t: 0, b: 0 };
+  function avoid() {
+    const cs = getComputedStyle($("insets")), px = k => parseFloat(cs[k]) || 0;
+    const ins = window.__insets || { l: px("paddingLeft"), r: px("paddingRight"), t: px("paddingTop"), b: px("paddingBottom") };
+    const land = innerWidth > innerHeight;
+    if (!land) return { l: 0, r: 0, t: ins.t, b: 0 };
+    let side = window.__notchSide;
+    if (!side) {
+      const o = typeof window.orientation === "number" ? window.orientation : (screen.orientation && screen.orientation.angle === 90 ? 90 : -90);
+      side = o === 90 ? "left" : "right";        // turned left: the top of the phone is on the left
+    }
+    const cut = Math.max(ins.l, ins.r);
+    return { l: side === "left" ? cut : 0, r: side === "right" ? cut : 0, t: 0, b: 0 };
+  }
   function clamp() {
     const zw = zone.clientWidth, zh = zone.clientHeight, w = fw * s, h = fh * s;
-    ox = w <= zw ? (zw - w) / 2 : Math.min(0, Math.max(zw - w, ox));
-    oy = h <= zh ? (zh - h) / 2 : Math.min(0, Math.max(zh - h, oy));
+    const rw = zw - A.l - A.r, rh = zh - A.t - A.b;
+    ox = w <= rw ? A.l + (rw - w) / 2 : Math.min(A.l, Math.max(zw - A.r - w, ox));
+    oy = h <= rh ? A.t + (rh - h) / 2 : Math.min(A.t, Math.max(zh - A.b - h, oy));
   }
   function apply() {
     clamp();
@@ -654,15 +677,17 @@ const view = (() => {
   // The button says what it will do: Reset (after zooming), or switch Wide / Fit.
   // Hidden when there's nothing to switch (e.g. portrait, where both are the same).
   function label() {
-    const b = $("t-fit"), canWide = (zone.clientWidth / fw) > fit * 1.02, zoomed = Math.abs(s - base) > 0.01;
+    const b = $("t-fit"), canWide = ((zone.clientWidth - A.l - A.r) / fw) > fit * 1.02, zoomed = Math.abs(s - base) > 0.01;
     b.classList.toggle("hidden", !zoomed && !canWide);
     b.lastChild.textContent = zoomed ? "Reset" : (mode === "fill" ? "Fit" : "Wide");
   }
   function relayout() {
     const zw = zone.clientWidth, zh = zone.clientHeight; if (!zw || !zh) return;
     const atBase = Math.abs(s - base) < 0.001;
-    fit = Math.min(zw / fw, zh / fh);
-    base = mode === "fill" ? Math.max(fit, zw / fw) : fit;
+    A = avoid();
+    const rw = zw - A.l - A.r, rh = zh - A.t - A.b;
+    fit = Math.min(rw / fw, rh / fh);
+    base = mode === "fill" ? Math.max(fit, rw / fw) : fit;
     if (atBase || s < fit) { s = base; oy = 0; }
     apply();
   }
@@ -679,11 +704,63 @@ const view = (() => {
   }
   new ResizeObserver(relayout).observe(zone);
   window.addEventListener("orientationchange", () => setTimeout(relayout, 300));
+  window.addEventListener("resize", () => setTimeout(relayout, 50));
   $("t-fit").onclick = () => {
     if (Math.abs(s - base) > 0.01) { s = base; oy = 0; apply(); return; }
     setMode(mode === "fill" ? "fit" : "fill");
   };
-  return { relayout, zoomAt, pan, toGame, get scale() { return s; } };
+  return { relayout, zoomAt, pan, toGame, get scale() { return s; }, get avoid() { return A; } };
+})();
+
+/* ===== Menu button =====
+   A small button floats over the game and fades when not in use. Tap it for the tools;
+   drag it to wherever it's least in the way (the spot is remembered). */
+const menu = (() => {
+  const fab = $("fab"), panel = $("tools"), stage = $("stage");
+  let pos = null, fadeTimer = 0, drag = null;
+  try { pos = JSON.parse(localStorage.getItem("cm-fab") || "null"); } catch (e) {}
+  const SIZE = 42, M = 12;
+  function place() {
+    const W = stage.clientWidth, H = stage.clientHeight, A = view.avoid;
+    let x, y;
+    if (pos) { x = pos.x * W - SIZE / 2; y = pos.y * H - SIZE / 2; }
+    else { x = W - A.r - SIZE - M; y = A.t + M; }           // default: top corner, away from the camera
+    x = Math.max(A.l + 4, Math.min(W - A.r - SIZE - 4, x)); y = Math.max(A.t + 4, Math.min(H - SIZE - 4, y));
+    fab.style.transform = `translate(${x}px, ${y}px)`; fab.dataset.x = x; fab.dataset.y = y;
+    if (!panel.classList.contains("hidden")) placePanel();
+  }
+  function placePanel() {
+    const W = stage.clientWidth, H = stage.clientHeight, x = +fab.dataset.x, y = +fab.dataset.y;
+    const pw = panel.offsetWidth, ph = panel.offsetHeight;
+    let px = x + SIZE / 2 > W / 2 ? x + SIZE - pw : x, py = y + SIZE + 8;
+    if (py + ph > H - 4) py = Math.max(4, y - ph - 8);
+    px = Math.max(4, Math.min(W - pw - 4, px));
+    panel.style.transform = `translate(${px}px, ${py}px)`;
+  }
+  function wake() { fab.classList.add("awake"); clearTimeout(fadeTimer); fadeTimer = setTimeout(() => { if (panel.classList.contains("hidden")) fab.classList.remove("awake"); }, 3000); }
+  function open() { panel.classList.remove("hidden"); placePanel(); fab.classList.add("awake"); }
+  function close() { panel.classList.add("hidden"); wake(); }
+  const toggle = () => panel.classList.contains("hidden") ? open() : close();
+  fab.addEventListener("touchstart", e => { e.preventDefault(); const t = e.touches[0]; drag = { sx: t.clientX, sy: t.clientY, moved: false }; wake(); }, { passive: false });
+  fab.addEventListener("touchmove", e => {
+    e.preventDefault(); if (!drag) return;
+    const t = e.touches[0];
+    if (!drag.moved && Math.hypot(t.clientX - drag.sx, t.clientY - drag.sy) > 8) { drag.moved = true; close(); }
+    if (drag.moved) { pos = { x: t.clientX / stage.clientWidth, y: t.clientY / stage.clientHeight }; place(); }
+  }, { passive: false });
+  fab.addEventListener("touchend", e => {
+    e.preventDefault(); if (!drag) return;
+    if (drag.moved) { try { localStorage.setItem("cm-fab", JSON.stringify(pos)); } catch (err) {} } else toggle();
+    drag = null; wake();
+  }, { passive: false });
+  fab.addEventListener("click", e => { if (e.detail !== 0 || !("ontouchstart" in window)) toggle(); });   // mouse / keyboard
+  // Any tool closes the menu (Keys needs the tap itself to bring up the keyboard).
+  panel.addEventListener("click", () => setTimeout(close, 0));
+  $("zone").addEventListener("touchstart", () => { if (!panel.classList.contains("hidden")) close(); }, { passive: true });
+  $("zone").addEventListener("mousedown", () => { if (!panel.classList.contains("hidden")) close(); });
+  new ResizeObserver(place).observe(stage);
+  window.addEventListener("orientationchange", () => setTimeout(place, 350));
+  return { place, wake, close, armed(v) { fab.classList.toggle("armed", v); } };
 })();
 
 /* ===== Touch to mouse =====
@@ -703,7 +780,7 @@ const view = (() => {
   const button = (b, down) => { if (ci) { power.input(); ci.sendMouseButton(b, down); } };
   // If the tap wakes a paused emulator, give the game a moment to start reading the mouse.
   function click(x, y, b) { const woke = power.paused; move(x, y); setTimeout(() => { move(x, y); button(b, true); setTimeout(() => button(b, false), HOLD); }, woke ? 260 : SETTLE); }
-  const setRight = v => { rightNext = v; $("t-rc").setAttribute("aria-pressed", String(v)); };
+  const setRight = v => { rightNext = v; $("t-rc").setAttribute("aria-pressed", String(v)); menu.armed(v); };
   $("t-rc").onclick = () => setRight(!rightNext);
   const two = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, d: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)) });
   const opts = { passive: false };

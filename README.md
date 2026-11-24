@@ -14,6 +14,8 @@ A personal project: the original DOS version of CM 97/98 running in Safari throu
 
 ## Controls
 
+- The round button floating over the game opens the tools: Keys, Right, Fit/Wide, Keep and Exit. It fades when you're not using it; drag it anywhere it's out of the way (the spot is remembered).
+
 - Tap to click. Drag with one finger to drag in the game (players and arrows on the tactics screen).
 - Press and hold for a right click (keep holding and move to drag with the right button).
 - Right makes your next tap or drag use the right button.
