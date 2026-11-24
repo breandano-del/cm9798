@@ -21,7 +21,7 @@ A personal project: the original DOS version of CM 97/98 running in Safari throu
 - Right makes your next tap or drag use the right button.
 - Two fingers: drag to scroll, pinch to zoom. Wide fills the width of the screen (bigger text); Fit shows the whole screen; Reset undoes a zoom.
 - Keys opens the phone keyboard, plus Esc, Enter, Tab, arrows and Page Up/Down.
-- Keep stores your saves on the device straight away (it also happens on its own every 45 seconds and when you leave). Exit goes back to the home screen.
+- Keep stores your saves on the device straight away (it also happens on its own every 90 seconds while you play, and when you leave). Exit goes back to the home screen.
 
 ## Saves
 
